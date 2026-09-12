@@ -12,6 +12,7 @@ from app.models.queue_entry import QueueEntry, QueueStatus
 from app.models.specialty import Specialty
 from app.models.triage_answer import TriageAnswer
 from app.models.triage_assessment import TriageAssessment, TriageUrgency
+from app.models.triage_message import TriageMessage
 from app.models.triage_question import QuestionResponseType, TriageQuestion
 from app.models.triage_session import TriageSession, TriageSessionStatus
 
@@ -33,9 +34,11 @@ __all__ = [
     "ConsultationStatus",
     "TriageSession",
     "TriageSessionStatus",
+    "TriageMessage",
     "TriageQuestion",
     "QuestionResponseType",
     "TriageAnswer",
     "TriageAssessment",
     "TriageUrgency",
 ]
+

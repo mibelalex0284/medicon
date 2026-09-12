@@ -1,17 +1,22 @@
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 from app.core.dependencies import AuthenticatedUser, require_patient
 from app.db.session import get_db
+from app.repositories.triage_repository import triage_repo
 from app.schemas.triage import (
     TriageAnswerCreate,
     TriageAnswerResponse,
     TriageAssessmentResponse,
+    TriageConversationalTurnResponse,
+    TriageMessageCreate,
+    TriageMessageResponse,
     TriageQuestionResponse,
     TriageSessionConfirm,
     TriageSessionCreate,
     TriageSessionResponse,
 )
+from app.services.triage.orchestrator import ConversationalTriageOrchestrator
 from app.services.triage_service import triage_service
 
 router = APIRouter(tags=["Triage"])
@@ -143,3 +148,41 @@ def assess_triage_session(
         guidance=guidance,
         assessed_at=assessment.assessed_at,
     )
+
+
+@router.post(
+    "/sessions/{session_id}/messages",
+    response_model=TriageConversationalTurnResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Process Conversational Triage Turn",
+    description="Processes a patient natural-language message, extracts clinical evidence, screens red flags, and selects the next adaptive question.",
+)
+def process_triage_message(
+    session_id: str,
+    message_in: TriageMessageCreate,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_patient),
+) -> TriageConversationalTurnResponse:
+    orchestrator = ConversationalTriageOrchestrator(db=db)
+    return orchestrator.process_patient_turn(
+        session_id=session_id,
+        patient_message_text=message_in.content,
+        actor_auth_user_id=current_user.id,
+    )
+
+
+@router.get(
+    "/sessions/{session_id}/messages",
+    response_model=List[TriageMessageResponse],
+    summary="Get Triage Session Messages",
+    description="Retrieves the chronological message history for a conversational triage session.",
+)
+def get_triage_messages(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_patient),
+) -> List[TriageMessageResponse]:
+    session = triage_service.get_session(db, session_id)
+    triage_service._assert_patient_ownership(db, session, current_user.id)
+    return triage_repo.get_session_messages(db, session_id)
+

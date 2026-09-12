@@ -55,3 +55,4 @@ ENV/
 *.sqlite3
 .pytest_cache/
 
+unit/

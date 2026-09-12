@@ -2,6 +2,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session, joinedload
 from app.models.triage_answer import TriageAnswer
 from app.models.triage_assessment import TriageAssessment
+from app.models.triage_message import TriageMessage
 from app.models.triage_question import QuestionResponseType, TriageQuestion
 from app.models.triage_session import TriageSession, TriageSessionStatus
 
@@ -169,5 +170,37 @@ class TriageRepository:
             .all()
         )
 
+    def add_message(
+        self,
+        db: Session,
+        session_id: str,
+        sender: str,
+        content: str,
+        turn_index: int = 0,
+        extracted_evidence: Optional[str] = None,
+    ) -> TriageMessage:
+        message = TriageMessage(
+            session_id=session_id,
+            sender=sender,
+            content=content,
+            turn_index=turn_index,
+            extracted_evidence=extracted_evidence,
+        )
+        db.add(message)
+        db.commit()
+        db.refresh(message)
+        return message
+
+    def get_session_messages(
+        self, db: Session, session_id: str
+    ) -> List[TriageMessage]:
+        return (
+            db.query(TriageMessage)
+            .filter(TriageMessage.session_id == session_id)
+            .order_by(TriageMessage.turn_index.asc(), TriageMessage.created_at.asc())
+            .all()
+        )
+
 
 triage_repo = TriageRepository()
+

@@ -69,3 +69,52 @@ class TriageSessionResponse(BaseModel):
     assessment: Optional[TriageAssessmentResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TriageMessageCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+class TriageMessageResponse(BaseModel):
+    id: str
+    session_id: str
+    sender: str
+    content: str
+    turn_index: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CandidateConditionSummary(BaseModel):
+    condition: str
+    probability: float
+    severity: int = 1
+
+
+class SelectedQuestionSummary(BaseModel):
+    evidence_id: str
+    question_text: str
+    data_type: str = "B"
+    possible_values: List[str] = []
+    category: str = "GENERAL"
+    is_antecedent: bool = False
+    expected_information_gain: float = 0.0
+
+
+class TriageConversationalTurnResponse(BaseModel):
+    session_id: str
+    conversation_turn: int
+    is_complete: bool
+    stop_reason: Optional[str] = None
+    patient_message: str
+    assistant_message: str
+    extracted_evidences: List[dict] = Field(default_factory=list)
+    selected_question: Optional[SelectedQuestionSummary] = None
+    top_candidate_conditions: List[CandidateConditionSummary] = Field(default_factory=list)
+    uncertainty_score: float = 1.0
+    safety_flags: List[str] = Field(default_factory=list)
+    assessment: Optional[TriageAssessmentResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+

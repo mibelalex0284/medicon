@@ -10,6 +10,8 @@ if TYPE_CHECKING:
     from app.models.patient import Patient
     from app.models.triage_answer import TriageAnswer
     from app.models.triage_assessment import TriageAssessment
+    from app.models.triage_message import TriageMessage
+
 
 
 class TriageSessionStatus(str, enum.Enum):
@@ -58,6 +60,10 @@ class TriageSession(Base, TimestampMixin):
     answers: Mapped[List["TriageAnswer"]] = relationship(
         "TriageAnswer", back_populates="triage_session", cascade="all, delete-orphan"
     )
+    messages: Mapped[List["TriageMessage"]] = relationship(
+        "TriageMessage", back_populates="session", cascade="all, delete-orphan", order_by="TriageMessage.turn_index"
+    )
     assessment: Mapped[Optional["TriageAssessment"]] = relationship(
         "TriageAssessment", back_populates="triage_session", uselist=False, cascade="all, delete-orphan"
     )
+
