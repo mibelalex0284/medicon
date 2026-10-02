@@ -174,7 +174,7 @@ class InformationGainQuestionSelector:
                 p_e1_given_c[c] = 0.04
 
         # Marginal P(E=1) and P(E=0)
-        p_e1 = sum(candidate_probs[c] * p_e1_given_c[c] for c in all_conditions.keys())
+        p_e1 = sum(candidate_probs.get(c, 0.0) * p_e1_given_c[c] for c in all_conditions.keys())
         p_e0 = 1.0 - p_e1
 
         if p_e1 <= 1e-6 or p_e0 <= 1e-6:
@@ -182,10 +182,10 @@ class InformationGainQuestionSelector:
 
         # Posteriors P(C=c | E=1) and P(C=c | E=0)
         post_e1 = {
-            c: candidate_probs[c] * p_e1_given_c[c] / p_e1 for c in all_conditions.keys()
+            c: candidate_probs.get(c, 0.0) * p_e1_given_c[c] / p_e1 for c in all_conditions.keys()
         }
         post_e0 = {
-            c: candidate_probs[c] * (1.0 - p_e1_given_c[c]) / p_e0 for c in all_conditions.keys()
+            c: candidate_probs.get(c, 0.0) * (1.0 - p_e1_given_c[c]) / p_e0 for c in all_conditions.keys()
         }
 
         # Conditional entropies H(C | E=1) and H(C | E=0)

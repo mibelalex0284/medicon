@@ -64,6 +64,10 @@ export class AuthService {
         this.currentUser = MOCK_USERS.patient;
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(this.currentUser));
       }
+
+      if (!localStorage.getItem("careroute_auth_token") && process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN) {
+        localStorage.setItem("careroute_auth_token", process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN);
+      }
     } else {
       this.currentUser = MOCK_USERS.patient;
     }

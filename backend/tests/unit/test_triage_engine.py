@@ -78,6 +78,38 @@ def test_red_flag_breathing_difficulty(db_session: Session, triage_patient):
     assert assessment.needs_escalation is True
 
 
+def test_red_flag_breathing_cannot_catch_breath(db_session: Session, triage_patient):
+    """Verify 'I can't catch my breath' triggers RED_FLAG_BREATHING_DIFFICULTY."""
+    session = triage_service.create_session(
+        db_session,
+        TriageSessionCreate(original_input="I can't catch my breath"),
+        actor_auth_user_id="pat-triage-usr-1",
+    )
+    assessment = triage_service.assess_session(
+        db_session, session.id, actor_auth_user_id="pat-triage-usr-1"
+    )
+    assert assessment.red_flag_detected is True
+    assert "RED_FLAG_BREATHING_DIFFICULTY" in assessment.red_flag_codes
+    assert assessment.urgency == TriageUrgency.HIGH
+    assert assessment.needs_escalation is True
+
+
+def test_red_flag_breathing_severe_respiratory_distress(db_session: Session, triage_patient):
+    """Verify 'I have severe respiratory distress' triggers RED_FLAG_BREATHING_DIFFICULTY."""
+    session = triage_service.create_session(
+        db_session,
+        TriageSessionCreate(original_input="I have severe respiratory distress"),
+        actor_auth_user_id="pat-triage-usr-1",
+    )
+    assessment = triage_service.assess_session(
+        db_session, session.id, actor_auth_user_id="pat-triage-usr-1"
+    )
+    assert assessment.red_flag_detected is True
+    assert "RED_FLAG_BREATHING_DIFFICULTY" in assessment.red_flag_codes
+    assert assessment.urgency == TriageUrgency.HIGH
+    assert assessment.needs_escalation is True
+
+
 def test_multiple_simultaneous_red_flags(db_session: Session, triage_patient):
     session = triage_service.create_session(
         db_session,

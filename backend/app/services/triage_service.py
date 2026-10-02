@@ -43,6 +43,8 @@ class TriageService:
             r"shortness\s+of\s+breath",
             r"gasping",
             r"struggling\s+to\s+breathe",
+            r"catch\s+(?:my\s+|one['’]?s\s+|their\s+)?breath",
+            r"respiratory\s+distress",
         ],
         "RED_FLAG_LOSS_OF_CONSCIOUSNESS": [
             r"loss\s+of\s+consciousness",

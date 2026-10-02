@@ -9,6 +9,14 @@ class EvidenceStatus(str, Enum):
     UNKNOWN = "UNKNOWN"
 
 
+class MeasurementItem(BaseModel):
+    """An individual numerical or quantitative measurement (e.g. temperature, blood pressure)."""
+
+    name: str
+    value: float
+    unit: Optional[str] = None
+
+
 class ExtractedEvidenceItem(BaseModel):
     """An individual piece of clinical evidence extracted from patient communication."""
 
@@ -24,7 +32,7 @@ class ExtractedEvidenceResult(BaseModel):
     chief_complaint: Optional[str] = None
     duration: Optional[str] = None
     severity: Optional[int] = Field(default=None, ge=1, le=10)
-    measurements: Dict[str, float] = Field(default_factory=dict)
+    measurements: List[MeasurementItem] = Field(default_factory=list)
     items: List[ExtractedEvidenceItem] = Field(default_factory=list)
 
 

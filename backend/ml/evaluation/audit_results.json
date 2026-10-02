@@ -1,0 +1,2666 @@
+{
+  "n": 1000,
+  "top1_recall": 0.407,
+  "top3_recall": 0.647,
+  "top5_recall": 0.768,
+  "avg_rank": 4.37,
+  "median_rank": 2,
+  "avg_turns": 3.425,
+  "median_turns": 3,
+  "avg_entropy_reduction": 0.2627156,
+  "dependency_violations": 0,
+  "distinct_questions_count": 50,
+  "total_questions_asked": 3425,
+  "low_ig_questions": 0,
+  "question_counts": [
+    [
+      "E_201",
+      557
+    ],
+    [
+      "E_151",
+      330
+    ],
+    [
+      "E_91",
+      266
+    ],
+    [
+      "E_148",
+      262
+    ],
+    [
+      "E_89",
+      246
+    ],
+    [
+      "E_155",
+      237
+    ],
+    [
+      "E_181",
+      232
+    ],
+    [
+      "E_129",
+      138
+    ],
+    [
+      "E_53",
+      104
+    ],
+    [
+      "E_45",
+      97
+    ],
+    [
+      "E_51",
+      92
+    ],
+    [
+      "E_218",
+      80
+    ],
+    [
+      "E_214",
+      69
+    ],
+    [
+      "E_77",
+      66
+    ],
+    [
+      "E_217",
+      64
+    ],
+    [
+      "E_144",
+      64
+    ],
+    [
+      "E_82",
+      58
+    ],
+    [
+      "E_50",
+      53
+    ],
+    [
+      "E_176",
+      48
+    ],
+    [
+      "E_88",
+      43
+    ]
+  ],
+  "stop_reasons": {
+    "STOP_SUFFICIENT_EVIDENCE": 690,
+    "MAX_CONVERSATION_TURNS_REACHED": 310
+  },
+  "turns_distribution": {
+    "1": 238,
+    "5": 71,
+    "6": 310,
+    "3": 90,
+    "2": 231,
+    "4": 60
+  },
+  "high_sev_total": 729,
+  "high_sev_escalated": 673,
+  "high_sev_escalation_rate": 0.9231824417009602,
+  "careroute_red_flag_cases": 479,
+  "careroute_red_flag_detected": 430,
+  "high_sev_failures": [
+    {
+      "patient_id": "P_00017",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_157",
+      "evidence_count": 20,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_177",
+          "ig": 0.5626,
+          "answer": "PRESENT",
+          "top_cond": "Guillain-Barr\u00e9 syndrome",
+          "top_prob": 0.4751,
+          "entropy": 0.2722
+        }
+      ],
+      "final_top_cond": "Guillain-Barr\u00e9 syndrome",
+      "final_top_prob": 0.4751,
+      "final_top_severity": 2,
+      "final_entropy": 0.2722,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00024",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_217",
+      "evidence_count": 16,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_151",
+          "ig": 0.4956,
+          "answer": "ABSENT",
+          "top_cond": "GERD",
+          "top_prob": 0.1914,
+          "entropy": 0.7368
+        },
+        {
+          "turn": 2,
+          "question": "E_155",
+          "ig": 0.5399,
+          "answer": "PRESENT",
+          "top_cond": "Myocarditis",
+          "top_prob": 0.428,
+          "entropy": 0.3624
+        }
+      ],
+      "final_top_cond": "Myocarditis",
+      "final_top_prob": 0.428,
+      "final_top_severity": 2,
+      "final_entropy": 0.3624,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00025",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_148",
+      "evidence_count": 22,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_51",
+          "ig": 0.5431,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1442,
+          "entropy": 0.7768
+        },
+        {
+          "turn": 2,
+          "question": "E_50",
+          "ig": 0.5407,
+          "answer": "PRESENT",
+          "top_cond": "Unstable angina",
+          "top_prob": 0.2863,
+          "entropy": 0.4408
+        }
+      ],
+      "final_top_cond": "Unstable angina",
+      "final_top_prob": 0.2863,
+      "final_top_severity": 2,
+      "final_entropy": 0.4408,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00028",
+      "pathology": "HIV (initial infection)",
+      "severity": 3,
+      "initial_evidence": "E_148",
+      "evidence_count": 32,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_51",
+          "ig": 0.5431,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1442,
+          "entropy": 0.7768
+        },
+        {
+          "turn": 2,
+          "question": "E_50",
+          "ig": 0.5407,
+          "answer": "PRESENT",
+          "top_cond": "Unstable angina",
+          "top_prob": 0.2863,
+          "entropy": 0.4408
+        }
+      ],
+      "final_top_cond": "Unstable angina",
+      "final_top_prob": 0.2863,
+      "final_top_severity": 2,
+      "final_entropy": 0.4408,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00061",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_53",
+      "evidence_count": 25,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "ABSENT",
+          "top_cond": "Cluster headache",
+          "top_prob": 0.0543,
+          "entropy": 0.8576
+        },
+        {
+          "turn": 3,
+          "question": "E_148",
+          "ig": 0.4793,
+          "answer": "PRESENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1597,
+          "entropy": 0.6099
+        }
+      ],
+      "final_top_cond": "Boerhaave",
+      "final_top_prob": 0.1597,
+      "final_top_severity": 2,
+      "final_entropy": 0.6099,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00082",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_217",
+      "evidence_count": 16,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_151",
+          "ig": 0.4956,
+          "answer": "ABSENT",
+          "top_cond": "GERD",
+          "top_prob": 0.1914,
+          "entropy": 0.7368
+        },
+        {
+          "turn": 2,
+          "question": "E_155",
+          "ig": 0.5399,
+          "answer": "PRESENT",
+          "top_cond": "Myocarditis",
+          "top_prob": 0.428,
+          "entropy": 0.3624
+        }
+      ],
+      "final_top_cond": "Myocarditis",
+      "final_top_prob": 0.428,
+      "final_top_severity": 2,
+      "final_entropy": 0.3624,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00094",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_177",
+      "evidence_count": 25,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_157",
+          "ig": 0.5626,
+          "answer": "PRESENT",
+          "top_cond": "Guillain-Barr\u00e9 syndrome",
+          "top_prob": 0.4751,
+          "entropy": 0.2722
+        }
+      ],
+      "final_top_cond": "Guillain-Barr\u00e9 syndrome",
+      "final_top_prob": 0.4751,
+      "final_top_severity": 2,
+      "final_entropy": 0.2722,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00097",
+      "pathology": "HIV (initial infection)",
+      "severity": 3,
+      "initial_evidence": "E_148",
+      "evidence_count": 34,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_51",
+          "ig": 0.5431,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1442,
+          "entropy": 0.7768
+        },
+        {
+          "turn": 2,
+          "question": "E_50",
+          "ig": 0.5407,
+          "answer": "PRESENT",
+          "top_cond": "Unstable angina",
+          "top_prob": 0.2863,
+          "entropy": 0.4408
+        }
+      ],
+      "final_top_cond": "Unstable angina",
+      "final_top_prob": 0.2863,
+      "final_top_severity": 2,
+      "final_entropy": 0.4408,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_BREATHING_DIFFICULTY"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00103",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_53",
+      "evidence_count": 31,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "PRESENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.1243,
+          "entropy": 0.635
+        }
+      ],
+      "final_top_cond": "Spontaneous pneumothorax",
+      "final_top_prob": 0.1243,
+      "final_top_severity": 2,
+      "final_entropy": 0.635,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00187",
+      "pathology": "Pancreatic neoplasm",
+      "severity": 3,
+      "initial_evidence": "E_89",
+      "evidence_count": 23,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_148",
+          "ig": 0.5257,
+          "answer": "PRESENT",
+          "top_cond": "Unstable angina",
+          "top_prob": 0.219,
+          "entropy": 0.5002
+        }
+      ],
+      "final_top_cond": "Unstable angina",
+      "final_top_prob": 0.219,
+      "final_top_severity": 2,
+      "final_entropy": 0.5002,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_LOSS_OF_CONSCIOUSNESS"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00196",
+      "pathology": "HIV (initial infection)",
+      "severity": 3,
+      "initial_evidence": "E_53",
+      "evidence_count": 28,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "ABSENT",
+          "top_cond": "Cluster headache",
+          "top_prob": 0.0543,
+          "entropy": 0.8576
+        },
+        {
+          "turn": 3,
+          "question": "E_148",
+          "ig": 0.4793,
+          "answer": "PRESENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1597,
+          "entropy": 0.6099
+        }
+      ],
+      "final_top_cond": "Boerhaave",
+      "final_top_prob": 0.1597,
+      "final_top_severity": 2,
+      "final_entropy": 0.6099,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_BREATHING_DIFFICULTY"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00202",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 28,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00222",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 29,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00225",
+      "pathology": "URTI",
+      "severity": 5,
+      "initial_evidence": "E_97",
+      "evidence_count": 21,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_50",
+          "ig": 0.54,
+          "answer": "ABSENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.2236,
+          "entropy": 0.7814
+        },
+        {
+          "turn": 2,
+          "question": "E_144",
+          "ig": 0.5231,
+          "answer": "PRESENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.5836,
+          "entropy": 0.4005
+        }
+      ],
+      "final_top_cond": "Ebola",
+      "final_top_prob": 0.5836,
+      "final_top_severity": 1,
+      "final_entropy": 0.4005,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00238",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_53",
+      "evidence_count": 28,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "PRESENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.1243,
+          "entropy": 0.635
+        }
+      ],
+      "final_top_cond": "Spontaneous pneumothorax",
+      "final_top_prob": 0.1243,
+      "final_top_severity": 2,
+      "final_entropy": 0.635,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00245",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_157",
+      "evidence_count": 27,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_177",
+          "ig": 0.5626,
+          "answer": "PRESENT",
+          "top_cond": "Guillain-Barr\u00e9 syndrome",
+          "top_prob": 0.4751,
+          "entropy": 0.2722
+        }
+      ],
+      "final_top_cond": "Guillain-Barr\u00e9 syndrome",
+      "final_top_prob": 0.4751,
+      "final_top_severity": 2,
+      "final_entropy": 0.2722,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00260",
+      "pathology": "Anemia",
+      "severity": 4,
+      "initial_evidence": "E_82",
+      "evidence_count": 22,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_155",
+          "ig": 0.5435,
+          "answer": "ABSENT",
+          "top_cond": "Anemia",
+          "top_prob": 0.2222,
+          "entropy": 0.7846
+        },
+        {
+          "turn": 2,
+          "question": "E_88",
+          "ig": 1.0,
+          "answer": "ABSENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.2791,
+          "entropy": 0.8336
+        },
+        {
+          "turn": 3,
+          "question": "E_214",
+          "ig": 0.5299,
+          "answer": "ABSENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.0703,
+          "entropy": 0.9385
+        },
+        {
+          "turn": 4,
+          "question": "E_148",
+          "ig": 0.4564,
+          "answer": "ABSENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.0903,
+          "entropy": 0.9241
+        },
+        {
+          "turn": 5,
+          "question": "E_201",
+          "ig": 0.47,
+          "answer": "ABSENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.1251,
+          "entropy": 0.8589
+        },
+        {
+          "turn": 6,
+          "question": "E_76",
+          "ig": 0.4576,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.4394,
+          "entropy": 0.3863
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.4394,
+      "final_top_severity": 2,
+      "final_entropy": 0.3863,
+      "stop_reason": "MAX_CONVERSATION_TURNS_REACHED",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "G. BENCHMARK MISMATCH"
+    },
+    {
+      "patient_id": "P_00264",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 29,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00280",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_53",
+      "evidence_count": 29,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "PRESENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.1243,
+          "entropy": 0.635
+        }
+      ],
+      "final_top_cond": "Spontaneous pneumothorax",
+      "final_top_prob": 0.1243,
+      "final_top_severity": 2,
+      "final_entropy": 0.635,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00293",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_53",
+      "evidence_count": 23,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "PRESENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.1243,
+          "entropy": 0.635
+        }
+      ],
+      "final_top_cond": "Spontaneous pneumothorax",
+      "final_top_prob": 0.1243,
+      "final_top_severity": 2,
+      "final_entropy": 0.635,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00305",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_82",
+      "evidence_count": 26,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_155",
+          "ig": 0.5435,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.3,
+          "entropy": 0.4102
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.3,
+      "final_top_severity": 2,
+      "final_entropy": 0.4102,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00308",
+      "pathology": "HIV (initial infection)",
+      "severity": 3,
+      "initial_evidence": "E_148",
+      "evidence_count": 32,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_51",
+          "ig": 0.5431,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1442,
+          "entropy": 0.7768
+        },
+        {
+          "turn": 2,
+          "question": "E_50",
+          "ig": 0.5407,
+          "answer": "PRESENT",
+          "top_cond": "Unstable angina",
+          "top_prob": 0.2863,
+          "entropy": 0.4408
+        }
+      ],
+      "final_top_cond": "Unstable angina",
+      "final_top_prob": 0.2863,
+      "final_top_severity": 2,
+      "final_entropy": 0.4408,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_BREATHING_DIFFICULTY"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00312",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_148",
+      "evidence_count": 22,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_51",
+          "ig": 0.5431,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1442,
+          "entropy": 0.7768
+        },
+        {
+          "turn": 2,
+          "question": "E_50",
+          "ig": 0.5407,
+          "answer": "PRESENT",
+          "top_cond": "Unstable angina",
+          "top_prob": 0.2863,
+          "entropy": 0.4408
+        }
+      ],
+      "final_top_cond": "Unstable angina",
+      "final_top_prob": 0.2863,
+      "final_top_severity": 2,
+      "final_entropy": 0.4408,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00321",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_53",
+      "evidence_count": 26,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "ABSENT",
+          "top_cond": "Cluster headache",
+          "top_prob": 0.0543,
+          "entropy": 0.8576
+        },
+        {
+          "turn": 3,
+          "question": "E_148",
+          "ig": 0.4793,
+          "answer": "PRESENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1597,
+          "entropy": 0.6099
+        }
+      ],
+      "final_top_cond": "Boerhaave",
+      "final_top_prob": 0.1597,
+      "final_top_severity": 2,
+      "final_entropy": 0.6099,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00323",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 27,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00341",
+      "pathology": "HIV (initial infection)",
+      "severity": 3,
+      "initial_evidence": "E_53",
+      "evidence_count": 33,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "ABSENT",
+          "top_cond": "Cluster headache",
+          "top_prob": 0.0543,
+          "entropy": 0.8576
+        },
+        {
+          "turn": 3,
+          "question": "E_148",
+          "ig": 0.4793,
+          "answer": "PRESENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1597,
+          "entropy": 0.6099
+        }
+      ],
+      "final_top_cond": "Boerhaave",
+      "final_top_prob": 0.1597,
+      "final_top_severity": 2,
+      "final_entropy": 0.6099,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00360",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_217",
+      "evidence_count": 16,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_151",
+          "ig": 0.4956,
+          "answer": "ABSENT",
+          "top_cond": "GERD",
+          "top_prob": 0.1914,
+          "entropy": 0.7368
+        },
+        {
+          "turn": 2,
+          "question": "E_155",
+          "ig": 0.5399,
+          "answer": "PRESENT",
+          "top_cond": "Myocarditis",
+          "top_prob": 0.428,
+          "entropy": 0.3624
+        }
+      ],
+      "final_top_cond": "Myocarditis",
+      "final_top_prob": 0.428,
+      "final_top_severity": 2,
+      "final_entropy": 0.3624,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00428",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_82",
+      "evidence_count": 24,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_155",
+          "ig": 0.5435,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.3,
+          "entropy": 0.4102
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.3,
+      "final_top_severity": 2,
+      "final_entropy": 0.4102,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00430",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_155",
+      "evidence_count": 16,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_82",
+          "ig": 0.5346,
+          "answer": "ABSENT",
+          "top_cond": "Atrial fibrillation",
+          "top_prob": 0.1822,
+          "entropy": 0.7616
+        },
+        {
+          "turn": 2,
+          "question": "E_217",
+          "ig": 0.5371,
+          "answer": "PRESENT",
+          "top_cond": "Myocarditis",
+          "top_prob": 0.4341,
+          "entropy": 0.3525
+        }
+      ],
+      "final_top_cond": "Myocarditis",
+      "final_top_prob": 0.4341,
+      "final_top_severity": 2,
+      "final_entropy": 0.3525,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00445",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_217",
+      "evidence_count": 17,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_151",
+          "ig": 0.4956,
+          "answer": "ABSENT",
+          "top_cond": "GERD",
+          "top_prob": 0.1914,
+          "entropy": 0.7368
+        },
+        {
+          "turn": 2,
+          "question": "E_155",
+          "ig": 0.5399,
+          "answer": "PRESENT",
+          "top_cond": "Myocarditis",
+          "top_prob": 0.428,
+          "entropy": 0.3624
+        }
+      ],
+      "final_top_cond": "Myocarditis",
+      "final_top_prob": 0.428,
+      "final_top_severity": 2,
+      "final_entropy": 0.3624,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00468",
+      "pathology": "Chagas",
+      "severity": 3,
+      "initial_evidence": "E_53",
+      "evidence_count": 20,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "ABSENT",
+          "top_cond": "Cluster headache",
+          "top_prob": 0.0543,
+          "entropy": 0.8576
+        },
+        {
+          "turn": 3,
+          "question": "E_148",
+          "ig": 0.4793,
+          "answer": "PRESENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1597,
+          "entropy": 0.6099
+        }
+      ],
+      "final_top_cond": "Boerhaave",
+      "final_top_prob": 0.1597,
+      "final_top_severity": 2,
+      "final_entropy": 0.6099,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00500",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 28,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00514",
+      "pathology": "Atrial fibrillation",
+      "severity": 3,
+      "initial_evidence": "E_66",
+      "evidence_count": 8,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4435,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0376,
+          "entropy": 0.8859
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4608,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.0485,
+          "entropy": 0.8612
+        },
+        {
+          "turn": 3,
+          "question": "E_155",
+          "ig": 0.4834,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.1492,
+          "entropy": 0.5844
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.1492,
+      "final_top_severity": 2,
+      "final_entropy": 0.5844,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00522",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 28,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00527",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_53",
+      "evidence_count": 28,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "PRESENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.1243,
+          "entropy": 0.635
+        }
+      ],
+      "final_top_cond": "Spontaneous pneumothorax",
+      "final_top_prob": 0.1243,
+      "final_top_severity": 2,
+      "final_entropy": 0.635,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00534",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_157",
+      "evidence_count": 24,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_177",
+          "ig": 0.5626,
+          "answer": "PRESENT",
+          "top_cond": "Guillain-Barr\u00e9 syndrome",
+          "top_prob": 0.4751,
+          "entropy": 0.2722
+        }
+      ],
+      "final_top_cond": "Guillain-Barr\u00e9 syndrome",
+      "final_top_prob": 0.4751,
+      "final_top_severity": 2,
+      "final_entropy": 0.2722,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00535",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_82",
+      "evidence_count": 26,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_155",
+          "ig": 0.5435,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.3,
+          "entropy": 0.4102
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.3,
+      "final_top_severity": 2,
+      "final_entropy": 0.4102,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00544",
+      "pathology": "Anemia",
+      "severity": 4,
+      "initial_evidence": "E_82",
+      "evidence_count": 22,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_155",
+          "ig": 0.5435,
+          "answer": "ABSENT",
+          "top_cond": "Anemia",
+          "top_prob": 0.2222,
+          "entropy": 0.7846
+        },
+        {
+          "turn": 2,
+          "question": "E_88",
+          "ig": 1.0,
+          "answer": "ABSENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.2791,
+          "entropy": 0.8336
+        },
+        {
+          "turn": 3,
+          "question": "E_214",
+          "ig": 0.5299,
+          "answer": "ABSENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.0703,
+          "entropy": 0.9385
+        },
+        {
+          "turn": 4,
+          "question": "E_148",
+          "ig": 0.4564,
+          "answer": "ABSENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.0903,
+          "entropy": 0.9241
+        },
+        {
+          "turn": 5,
+          "question": "E_201",
+          "ig": 0.47,
+          "answer": "ABSENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.1251,
+          "entropy": 0.8589
+        },
+        {
+          "turn": 6,
+          "question": "E_76",
+          "ig": 0.4576,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.4394,
+          "entropy": 0.3863
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.4394,
+      "final_top_severity": 2,
+      "final_entropy": 0.3863,
+      "stop_reason": "MAX_CONVERSATION_TURNS_REACHED",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "G. BENCHMARK MISMATCH"
+    },
+    {
+      "patient_id": "P_00557",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_66",
+      "evidence_count": 16,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4435,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0376,
+          "entropy": 0.8859
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4608,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.0485,
+          "entropy": 0.8612
+        },
+        {
+          "turn": 3,
+          "question": "E_155",
+          "ig": 0.4834,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.1492,
+          "entropy": 0.5844
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.1492,
+      "final_top_severity": 2,
+      "final_entropy": 0.5844,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00558",
+      "pathology": "URTI",
+      "severity": 5,
+      "initial_evidence": "E_144",
+      "evidence_count": 20,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_50",
+          "ig": 0.54,
+          "answer": "ABSENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.2236,
+          "entropy": 0.7814
+        },
+        {
+          "turn": 2,
+          "question": "E_97",
+          "ig": 0.5231,
+          "answer": "PRESENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.5836,
+          "entropy": 0.4005
+        }
+      ],
+      "final_top_cond": "Ebola",
+      "final_top_prob": 0.5836,
+      "final_top_severity": 1,
+      "final_entropy": 0.4005,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_LOSS_OF_CONSCIOUSNESS"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00569",
+      "pathology": "HIV (initial infection)",
+      "severity": 3,
+      "initial_evidence": "E_53",
+      "evidence_count": 29,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "ABSENT",
+          "top_cond": "Cluster headache",
+          "top_prob": 0.0543,
+          "entropy": 0.8576
+        },
+        {
+          "turn": 3,
+          "question": "E_148",
+          "ig": 0.4793,
+          "answer": "PRESENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1597,
+          "entropy": 0.6099
+        }
+      ],
+      "final_top_cond": "Boerhaave",
+      "final_top_prob": 0.1597,
+      "final_top_severity": 2,
+      "final_entropy": 0.6099,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_BREATHING_DIFFICULTY"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00591",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_148",
+      "evidence_count": 24,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_51",
+          "ig": 0.5431,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.1442,
+          "entropy": 0.7768
+        },
+        {
+          "turn": 2,
+          "question": "E_50",
+          "ig": 0.5407,
+          "answer": "PRESENT",
+          "top_cond": "Unstable angina",
+          "top_prob": 0.2863,
+          "entropy": 0.4408
+        }
+      ],
+      "final_top_cond": "Unstable angina",
+      "final_top_prob": 0.2863,
+      "final_top_severity": 2,
+      "final_entropy": 0.4408,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00627",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_217",
+      "evidence_count": 21,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_151",
+          "ig": 0.4956,
+          "answer": "ABSENT",
+          "top_cond": "GERD",
+          "top_prob": 0.1914,
+          "entropy": 0.7368
+        },
+        {
+          "turn": 2,
+          "question": "E_155",
+          "ig": 0.5399,
+          "answer": "PRESENT",
+          "top_cond": "Myocarditis",
+          "top_prob": 0.428,
+          "entropy": 0.3624
+        }
+      ],
+      "final_top_cond": "Myocarditis",
+      "final_top_prob": 0.428,
+      "final_top_severity": 2,
+      "final_entropy": 0.3624,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00700",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_53",
+      "evidence_count": 27,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "PRESENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.1243,
+          "entropy": 0.635
+        }
+      ],
+      "final_top_cond": "Spontaneous pneumothorax",
+      "final_top_prob": 0.1243,
+      "final_top_severity": 2,
+      "final_entropy": 0.635,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00705",
+      "pathology": "Pancreatic neoplasm",
+      "severity": 3,
+      "initial_evidence": "E_51",
+      "evidence_count": 28,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_129",
+          "ig": 0.5255,
+          "answer": "ABSENT",
+          "top_cond": "Chagas",
+          "top_prob": 0.2176,
+          "entropy": 0.7811
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4892,
+          "answer": "ABSENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.2924,
+          "entropy": 0.8067
+        },
+        {
+          "turn": 3,
+          "question": "E_97",
+          "ig": 0.5327,
+          "answer": "ABSENT",
+          "top_cond": "Scombroid food poisoning",
+          "top_prob": 0.0775,
+          "entropy": 0.9185
+        },
+        {
+          "turn": 4,
+          "question": "E_148",
+          "ig": 0.5237,
+          "answer": "PRESENT",
+          "top_cond": "Scombroid food poisoning",
+          "top_prob": 0.1761,
+          "entropy": 0.6178
+        }
+      ],
+      "final_top_cond": "Scombroid food poisoning",
+      "final_top_prob": 0.1761,
+      "final_top_severity": 2,
+      "final_entropy": 0.6178,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_LOSS_OF_CONSCIOUSNESS"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00711",
+      "pathology": "URTI",
+      "severity": 5,
+      "initial_evidence": "E_97",
+      "evidence_count": 17,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_50",
+          "ig": 0.54,
+          "answer": "ABSENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.2236,
+          "entropy": 0.7814
+        },
+        {
+          "turn": 2,
+          "question": "E_144",
+          "ig": 0.5231,
+          "answer": "PRESENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.5836,
+          "entropy": 0.4005
+        }
+      ],
+      "final_top_cond": "Ebola",
+      "final_top_prob": 0.5836,
+      "final_top_severity": 1,
+      "final_entropy": 0.4005,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00726",
+      "pathology": "Bronchitis",
+      "severity": 4,
+      "initial_evidence": "E_66",
+      "evidence_count": 18,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4435,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0376,
+          "entropy": 0.8859
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4608,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.0485,
+          "entropy": 0.8612
+        },
+        {
+          "turn": 3,
+          "question": "E_155",
+          "ig": 0.4834,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.0638,
+          "entropy": 0.8437
+        },
+        {
+          "turn": 4,
+          "question": "E_89",
+          "ig": 0.4788,
+          "answer": "ABSENT",
+          "top_cond": "Boerhaave",
+          "top_prob": 0.0842,
+          "entropy": 0.8306
+        },
+        {
+          "turn": 5,
+          "question": "E_91",
+          "ig": 0.4387,
+          "answer": "PRESENT",
+          "top_cond": "Epiglottitis",
+          "top_prob": 0.2744,
+          "entropy": 0.6033
+        }
+      ],
+      "final_top_cond": "Epiglottitis",
+      "final_top_prob": 0.2744,
+      "final_top_severity": 2,
+      "final_entropy": 0.6033,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00794",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 29,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00801",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 26,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00804",
+      "pathology": "Pericarditis",
+      "severity": 4,
+      "initial_evidence": "E_217",
+      "evidence_count": 15,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_151",
+          "ig": 0.4956,
+          "answer": "ABSENT",
+          "top_cond": "GERD",
+          "top_prob": 0.1914,
+          "entropy": 0.7368
+        },
+        {
+          "turn": 2,
+          "question": "E_155",
+          "ig": 0.5399,
+          "answer": "PRESENT",
+          "top_cond": "Myocarditis",
+          "top_prob": 0.428,
+          "entropy": 0.3624
+        }
+      ],
+      "final_top_cond": "Myocarditis",
+      "final_top_prob": 0.428,
+      "final_top_severity": 2,
+      "final_entropy": 0.3624,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00819",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_151",
+      "evidence_count": 29,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_152",
+          "ig": 0.5468,
+          "answer": "PRESENT",
+          "top_cond": "Anaphylaxis",
+          "top_prob": 0.1909,
+          "entropy": 0.4721
+        }
+      ],
+      "final_top_cond": "Anaphylaxis",
+      "final_top_prob": 0.1909,
+      "final_top_severity": 1,
+      "final_entropy": 0.4721,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00841",
+      "pathology": "URTI",
+      "severity": 5,
+      "initial_evidence": "E_144",
+      "evidence_count": 22,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_50",
+          "ig": 0.54,
+          "answer": "ABSENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.2236,
+          "entropy": 0.7814
+        },
+        {
+          "turn": 2,
+          "question": "E_97",
+          "ig": 0.5231,
+          "answer": "PRESENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.5836,
+          "entropy": 0.4005
+        }
+      ],
+      "final_top_cond": "Ebola",
+      "final_top_prob": 0.5836,
+      "final_top_severity": 1,
+      "final_entropy": 0.4005,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00850",
+      "pathology": "Localized edema",
+      "severity": 4,
+      "initial_evidence": "E_53",
+      "evidence_count": 31,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_201",
+          "ig": 0.4789,
+          "answer": "ABSENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.0411,
+          "entropy": 0.884
+        },
+        {
+          "turn": 2,
+          "question": "E_151",
+          "ig": 0.4804,
+          "answer": "PRESENT",
+          "top_cond": "Spontaneous pneumothorax",
+          "top_prob": 0.1243,
+          "entropy": 0.635
+        }
+      ],
+      "final_top_cond": "Spontaneous pneumothorax",
+      "final_top_prob": 0.1243,
+      "final_top_severity": 2,
+      "final_entropy": 0.635,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_CHEST_PAIN_SEVERE"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    },
+    {
+      "patient_id": "P_00871",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_155",
+      "evidence_count": 25,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_82",
+          "ig": 0.5346,
+          "answer": "PRESENT",
+          "top_cond": "PSVT",
+          "top_prob": 0.3,
+          "entropy": 0.4102
+        }
+      ],
+      "final_top_cond": "PSVT",
+      "final_top_prob": 0.3,
+      "final_top_severity": 2,
+      "final_entropy": 0.4102,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00946",
+      "pathology": "Panic attack",
+      "severity": 5,
+      "initial_evidence": "E_177",
+      "evidence_count": 27,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_157",
+          "ig": 0.5626,
+          "answer": "PRESENT",
+          "top_cond": "Guillain-Barr\u00e9 syndrome",
+          "top_prob": 0.4751,
+          "entropy": 0.2722
+        }
+      ],
+      "final_top_cond": "Guillain-Barr\u00e9 syndrome",
+      "final_top_prob": 0.4751,
+      "final_top_severity": 2,
+      "final_entropy": 0.2722,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [],
+      "failure_type": "E. STOPPING FAILURE / URGENCY MAPPING"
+    },
+    {
+      "patient_id": "P_00961",
+      "pathology": "URTI",
+      "severity": 5,
+      "initial_evidence": "E_97",
+      "evidence_count": 16,
+      "trajectory": [
+        {
+          "turn": 1,
+          "question": "E_50",
+          "ig": 0.54,
+          "answer": "ABSENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.2236,
+          "entropy": 0.7814
+        },
+        {
+          "turn": 2,
+          "question": "E_144",
+          "ig": 0.5231,
+          "answer": "PRESENT",
+          "top_cond": "Ebola",
+          "top_prob": 0.5836,
+          "entropy": 0.4005
+        }
+      ],
+      "final_top_cond": "Ebola",
+      "final_top_prob": 0.5836,
+      "final_top_severity": 1,
+      "final_entropy": 0.4005,
+      "stop_reason": "STOP_SUFFICIENT_EVIDENCE",
+      "needs_escalation": false,
+      "cr_red_flags_present": [
+        "RED_FLAG_LOSS_OF_CONSCIOUSNESS"
+      ],
+      "failure_type": "A. RED-FLAG DETECTION FAILURE"
+    }
+  ],
+  "cond_stats": {
+    "Anemia": {
+      "total": 50,
+      "top1": 32,
+      "top3": 38,
+      "top5": 41,
+      "turns": 203,
+      "ranks": 151,
+      "ranked_cnt": 50,
+      "high_sev": 50,
+      "escalated": 48
+    },
+    "Panic attack": {
+      "total": 27,
+      "top1": 10,
+      "top3": 22,
+      "top5": 25,
+      "turns": 75,
+      "ranks": 81,
+      "ranked_cnt": 27,
+      "high_sev": 27,
+      "escalated": 13
+    },
+    "Influenza": {
+      "total": 33,
+      "top1": 8,
+      "top3": 18,
+      "top5": 26,
+      "turns": 82,
+      "ranks": 116,
+      "ranked_cnt": 33,
+      "high_sev": 33,
+      "escalated": 33
+    },
+    "Boerhaave": {
+      "total": 15,
+      "top1": 12,
+      "top3": 15,
+      "top5": 15,
+      "turns": 50,
+      "ranks": 18,
+      "ranked_cnt": 15,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Bronchospasm / acute asthma exacerbation": {
+      "total": 23,
+      "top1": 20,
+      "top3": 23,
+      "top5": 23,
+      "turns": 106,
+      "ranks": 26,
+      "ranked_cnt": 23,
+      "high_sev": 23,
+      "escalated": 23
+    },
+    "Allergic sinusitis": {
+      "total": 13,
+      "top1": 10,
+      "top3": 13,
+      "top5": 13,
+      "turns": 41,
+      "ranks": 17,
+      "ranked_cnt": 13,
+      "high_sev": 13,
+      "escalated": 13
+    },
+    "Acute otitis media": {
+      "total": 31,
+      "top1": 2,
+      "top3": 13,
+      "top5": 15,
+      "turns": 132,
+      "ranks": 252,
+      "ranked_cnt": 31,
+      "high_sev": 31,
+      "escalated": 31
+    },
+    "Pulmonary embolism": {
+      "total": 32,
+      "top1": 1,
+      "top3": 11,
+      "top5": 16,
+      "turns": 70,
+      "ranks": 194,
+      "ranked_cnt": 32,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Viral pharyngitis": {
+      "total": 60,
+      "top1": 24,
+      "top3": 41,
+      "top5": 52,
+      "turns": 198,
+      "ranks": 307,
+      "ranked_cnt": 60,
+      "high_sev": 60,
+      "escalated": 60
+    },
+    "Myasthenia gravis": {
+      "total": 20,
+      "top1": 19,
+      "top3": 20,
+      "top5": 20,
+      "turns": 62,
+      "ranks": 22,
+      "ranked_cnt": 20,
+      "high_sev": 20,
+      "escalated": 20
+    },
+    "Bronchiectasis": {
+      "total": 14,
+      "top1": 6,
+      "top3": 6,
+      "top5": 6,
+      "turns": 70,
+      "ranks": 63,
+      "ranked_cnt": 14,
+      "high_sev": 14,
+      "escalated": 14
+    },
+    "SLE": {
+      "total": 11,
+      "top1": 5,
+      "top3": 5,
+      "top5": 5,
+      "turns": 51,
+      "ranks": 41,
+      "ranked_cnt": 11,
+      "high_sev": 11,
+      "escalated": 11
+    },
+    "Bronchitis": {
+      "total": 29,
+      "top1": 7,
+      "top3": 17,
+      "top5": 21,
+      "turns": 81,
+      "ranks": 129,
+      "ranked_cnt": 29,
+      "high_sev": 29,
+      "escalated": 28
+    },
+    "Pneumonia": {
+      "total": 38,
+      "top1": 8,
+      "top3": 22,
+      "top5": 25,
+      "turns": 109,
+      "ranks": 208,
+      "ranked_cnt": 38,
+      "high_sev": 38,
+      "escalated": 38
+    },
+    "Inguinal hernia": {
+      "total": 21,
+      "top1": 21,
+      "top3": 21,
+      "top5": 21,
+      "turns": 46,
+      "ranks": 21,
+      "ranked_cnt": 21,
+      "high_sev": 21,
+      "escalated": 21
+    },
+    "Acute dystonic reactions": {
+      "total": 27,
+      "top1": 16,
+      "top3": 19,
+      "top5": 19,
+      "turns": 113,
+      "ranks": 73,
+      "ranked_cnt": 27,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Acute rhinosinusitis": {
+      "total": 13,
+      "top1": 0,
+      "top3": 1,
+      "top5": 6,
+      "turns": 45,
+      "ranks": 116,
+      "ranked_cnt": 13,
+      "high_sev": 13,
+      "escalated": 13
+    },
+    "Pericarditis": {
+      "total": 25,
+      "top1": 9,
+      "top3": 18,
+      "top5": 18,
+      "turns": 113,
+      "ranks": 147,
+      "ranked_cnt": 25,
+      "high_sev": 25,
+      "escalated": 17
+    },
+    "Atrial fibrillation": {
+      "total": 15,
+      "top1": 9,
+      "top3": 10,
+      "top5": 10,
+      "turns": 53,
+      "ranks": 75,
+      "ranked_cnt": 15,
+      "high_sev": 15,
+      "escalated": 14
+    },
+    "Anaphylaxis": {
+      "total": 23,
+      "top1": 14,
+      "top3": 20,
+      "top5": 21,
+      "turns": 50,
+      "ranks": 44,
+      "ranked_cnt": 23,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "HIV (initial infection)": {
+      "total": 28,
+      "top1": 15,
+      "top3": 20,
+      "top5": 27,
+      "turns": 76,
+      "ranks": 86,
+      "ranked_cnt": 28,
+      "high_sev": 28,
+      "escalated": 22
+    },
+    "URTI": {
+      "total": 65,
+      "top1": 6,
+      "top3": 26,
+      "top5": 48,
+      "turns": 161,
+      "ranks": 350,
+      "ranked_cnt": 65,
+      "high_sev": 65,
+      "escalated": 60
+    },
+    "Chronic rhinosinusitis": {
+      "total": 25,
+      "top1": 1,
+      "top3": 12,
+      "top5": 16,
+      "turns": 94,
+      "ranks": 111,
+      "ranked_cnt": 25,
+      "high_sev": 25,
+      "escalated": 25
+    },
+    "Cluster headache": {
+      "total": 20,
+      "top1": 19,
+      "top3": 19,
+      "top5": 19,
+      "turns": 115,
+      "ranks": 28,
+      "ranked_cnt": 20,
+      "high_sev": 20,
+      "escalated": 20
+    },
+    "Stable angina": {
+      "total": 14,
+      "top1": 7,
+      "top3": 9,
+      "top5": 9,
+      "turns": 62,
+      "ranks": 69,
+      "ranked_cnt": 14,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Spontaneous pneumothorax": {
+      "total": 13,
+      "top1": 5,
+      "top3": 5,
+      "top5": 6,
+      "turns": 71,
+      "ranks": 100,
+      "ranked_cnt": 13,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Acute laryngitis": {
+      "total": 23,
+      "top1": 12,
+      "top3": 15,
+      "top5": 21,
+      "turns": 94,
+      "ranks": 102,
+      "ranked_cnt": 23,
+      "high_sev": 23,
+      "escalated": 23
+    },
+    "Pulmonary neoplasm": {
+      "total": 13,
+      "top1": 4,
+      "top3": 10,
+      "top5": 11,
+      "turns": 44,
+      "ranks": 40,
+      "ranked_cnt": 13,
+      "high_sev": 13,
+      "escalated": 13
+    },
+    "Myocarditis": {
+      "total": 10,
+      "top1": 5,
+      "top3": 7,
+      "top5": 8,
+      "turns": 38,
+      "ranks": 50,
+      "ranked_cnt": 10,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Acute pulmonary edema": {
+      "total": 21,
+      "top1": 1,
+      "top3": 10,
+      "top5": 13,
+      "turns": 33,
+      "ranks": 90,
+      "ranked_cnt": 21,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Unstable angina": {
+      "total": 14,
+      "top1": 5,
+      "top3": 11,
+      "top5": 11,
+      "turns": 46,
+      "ranks": 62,
+      "ranked_cnt": 14,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Scombroid food poisoning": {
+      "total": 15,
+      "top1": 2,
+      "top3": 6,
+      "top5": 6,
+      "turns": 45,
+      "ranks": 110,
+      "ranked_cnt": 15,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "PSVT": {
+      "total": 17,
+      "top1": 15,
+      "top3": 17,
+      "top5": 17,
+      "turns": 42,
+      "ranks": 19,
+      "ranked_cnt": 17,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Acute COPD exacerbation / infection": {
+      "total": 12,
+      "top1": 4,
+      "top3": 11,
+      "top5": 11,
+      "turns": 43,
+      "ranks": 27,
+      "ranked_cnt": 12,
+      "high_sev": 12,
+      "escalated": 12
+    },
+    "Localized edema": {
+      "total": 24,
+      "top1": 8,
+      "top3": 17,
+      "top5": 24,
+      "turns": 31,
+      "ranks": 63,
+      "ranked_cnt": 24,
+      "high_sev": 24,
+      "escalated": 8
+    },
+    "Guillain-Barr\u00e9 syndrome": {
+      "total": 19,
+      "top1": 10,
+      "top3": 15,
+      "top5": 19,
+      "turns": 78,
+      "ranks": 36,
+      "ranked_cnt": 19,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Possible NSTEMI / STEMI": {
+      "total": 27,
+      "top1": 2,
+      "top3": 8,
+      "top5": 19,
+      "turns": 107,
+      "ranks": 234,
+      "ranked_cnt": 27,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Pancreatic neoplasm": {
+      "total": 18,
+      "top1": 1,
+      "top3": 7,
+      "top5": 12,
+      "turns": 64,
+      "ranks": 183,
+      "ranked_cnt": 18,
+      "high_sev": 18,
+      "escalated": 16
+    },
+    "Larygospasm": {
+      "total": 5,
+      "top1": 5,
+      "top3": 5,
+      "top5": 5,
+      "turns": 15,
+      "ranks": 5,
+      "ranked_cnt": 5,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Sarcoidosis": {
+      "total": 23,
+      "top1": 13,
+      "top3": 13,
+      "top5": 13,
+      "turns": 126,
+      "ranks": 118,
+      "ranked_cnt": 23,
+      "high_sev": 23,
+      "escalated": 23
+    },
+    "Spontaneous rib fracture": {
+      "total": 7,
+      "top1": 2,
+      "top3": 2,
+      "top5": 2,
+      "turns": 38,
+      "ranks": 98,
+      "ranked_cnt": 7,
+      "high_sev": 7,
+      "escalated": 7
+    },
+    "GERD": {
+      "total": 19,
+      "top1": 11,
+      "top3": 11,
+      "top5": 11,
+      "turns": 81,
+      "ranks": 97,
+      "ranked_cnt": 19,
+      "high_sev": 19,
+      "escalated": 19
+    },
+    "Chagas": {
+      "total": 5,
+      "top1": 0,
+      "top3": 1,
+      "top5": 1,
+      "turns": 23,
+      "ranks": 99,
+      "ranked_cnt": 5,
+      "high_sev": 5,
+      "escalated": 4
+    },
+    "Croup": {
+      "total": 4,
+      "top1": 1,
+      "top3": 3,
+      "top5": 3,
+      "turns": 14,
+      "ranks": 20,
+      "ranked_cnt": 4,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Epiglottitis": {
+      "total": 15,
+      "top1": 10,
+      "top3": 15,
+      "top5": 15,
+      "turns": 47,
+      "ranks": 20,
+      "ranked_cnt": 15,
+      "high_sev": 0,
+      "escalated": 0
+    },
+    "Tuberculosis": {
+      "total": 18,
+      "top1": 6,
+      "top3": 15,
+      "top5": 18,
+      "turns": 59,
+      "ranks": 36,
+      "ranked_cnt": 18,
+      "high_sev": 18,
+      "escalated": 18
+    },
+    "Whooping cough": {
+      "total": 5,
+      "top1": 4,
+      "top3": 4,
+      "top5": 5,
+      "turns": 26,
+      "ranks": 9,
+      "ranked_cnt": 5,
+      "high_sev": 5,
+      "escalated": 5
+    },
+    "Bronchiolitis": {
+      "total": 1,
+      "top1": 0,
+      "top3": 0,
+      "top5": 0,
+      "turns": 2,
+      "ranks": 7,
+      "ranked_cnt": 1,
+      "high_sev": 1,
+      "escalated": 1
+    }
+  }
+}

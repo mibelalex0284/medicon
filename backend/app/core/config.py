@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Gemini & Stage 4B Triage Configuration
     GEMINI_API_KEY: Optional[str] = None
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.6-flash"
     DDXPLUS_DATA_PATH: str = "D:\\22687585.zip"
     TRIAGE_MAX_TURNS: int = 7
     TRIAGE_MIN_ENTROPY: float = 0.50

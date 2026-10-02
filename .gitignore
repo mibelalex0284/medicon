@@ -55,4 +55,9 @@ ENV/
 *.sqlite3
 .pytest_cache/
 
+# tests
+tests/
 unit/
+package_lock.json
+package.json
+tsconfig.json

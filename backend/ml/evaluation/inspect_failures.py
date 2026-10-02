@@ -1,0 +1,42 @@
+import json
+
+with open("ml/evaluation/audit_results.json") as f:
+    d = json.load(f)
+
+print("Total N:", d["n"])
+print("Top-1 recall:", f"{d['top1_recall']:.2%}")
+print("Top-3 recall:", f"{d['top3_recall']:.2%}")
+print("Top-5 recall:", f"{d['top5_recall']:.2%}")
+print("Avg rank:", f"{d['avg_rank']:.2f}")
+print("Median rank:", d["median_rank"])
+print("Avg turns:", f"{d['avg_turns']:.2f}")
+print("Median turns:", d["median_turns"])
+print("Avg entropy reduction:", f"{d['avg_entropy_reduction']:.4f}")
+print("Dependency violations:", d["dependency_violations"])
+print("Distinct questions:", d["distinct_questions_count"])
+print("Total questions asked:", d["total_questions_asked"])
+print("Low IG questions (< 0.01):", d["low_ig_questions"])
+print("Stopping reasons:", d["stop_reasons"])
+print("Turns distribution:", d["turns_distribution"])
+print("High sev total:", d["high_sev_total"])
+print("High sev escalated:", d["high_sev_escalated"])
+print("High sev escalation rate:", f"{d['high_sev_escalation_rate']:.2%}")
+print("CareRoute red flag cases:", d["careroute_red_flag_cases"])
+print("CareRoute red flag detected:", d["careroute_red_flag_detected"])
+
+print(f"\nTotal Failures Recorded: {len(d['high_sev_failures'])}")
+for idx, fail in enumerate(d["high_sev_failures"], 1):
+    print(f"\n--- Failure #{idx} ---")
+    print("Patient ID:", fail["patient_id"])
+    print("Pathology:", fail["pathology"], f"(DDXPlus Severity: {fail['severity']})")
+    print("Initial Evidence:", fail["initial_evidence"])
+    print("Evidence Count:", fail["evidence_count"])
+    print("Final Top Condition:", fail["final_top_cond"], f"(Severity: {fail['final_top_severity']}, Probability: {fail['final_top_prob']:.3f})")
+    print("Final Entropy:", f"{fail['final_entropy']:.3f}")
+    print("Stop Reason:", fail["stop_reason"])
+    print("Needs Escalation:", fail["needs_escalation"])
+    print("CareRoute Red Flags Present in ground truth:", fail["cr_red_flags_present"])
+    print("Failure Type Classification:", fail["failure_type"])
+    print("Trajectory:")
+    for step in fail["trajectory"]:
+        print(f"  Turn {step['turn']}: Asked={step['question']}, IG={step['ig']:.4f}, Ans={step['answer']} -> Top={step['top_cond']} (P={step['top_prob']:.3f}, Ent={step['entropy']:.3f})")

@@ -67,6 +67,45 @@ class TriageAssessment(Base):
     def red_flag_codes(self, codes: List[str]) -> None:
         self._red_flag_codes = json.dumps(codes)
 
+    @property
+    def guidance(self) -> str:
+        """Dynamic care navigation guidance string consistent with clinical assessment."""
+        dynamic = getattr(self, "_dynamic_guidance", None)
+        if dynamic:
+            return dynamic
+        if self.red_flag_detected:
+            return (
+                "Emergency warning signs were detected. Seek urgent medical attention "
+                "or proceed to the nearest emergency department immediately."
+            )
+        if self.needs_escalation or self.confidence < 0.60:
+            return (
+                "Some clinical presentation factors remain uncertain. "
+                "In-person medical evaluation is advised to ensure safe care navigation."
+            )
+        return (
+            "Based on your responses, routine care navigation is recommended. "
+            "Please schedule an appointment with the appropriate clinical specialty."
+        )
+
+    @guidance.setter
+    def guidance(self, value: str) -> None:
+        self._dynamic_guidance = value
+
+    @property
+    def recommended_specialty_name(self) -> Optional[str]:
+        """Name of the recommended clinical specialty, or fallback."""
+        dynamic = getattr(self, "_dynamic_specialty_name", None)
+        if dynamic:
+            return dynamic
+        if self.recommended_specialty:
+            return self.recommended_specialty.name
+        return "General Medicine" if not self.red_flag_detected else None
+
+    @recommended_specialty_name.setter
+    def recommended_specialty_name(self, value: Optional[str]) -> None:
+        self._dynamic_specialty_name = value
+
     # Relationships
     triage_session: Mapped["TriageSession"] = relationship(
         "TriageSession", back_populates="assessment"

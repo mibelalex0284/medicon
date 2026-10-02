@@ -1,0 +1,516 @@
+{
+  "model": "gemini-3.6-flash",
+  "total_cases": 46,
+  "live_calls_made": 40,
+  "safety_checks_planned": 6,
+  "total_passed": 25,
+  "total_failed": 21,
+  "category_summary": {
+    "Simple Positive": {
+      "cases": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "Negation": {
+      "cases": 3,
+      "passed": 3,
+      "failed": 0
+    },
+    "Uncertainty": {
+      "cases": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "Multiple Symptoms": {
+      "cases": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "Mixed Pos/Neg": {
+      "cases": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "Duration": {
+      "cases": 2,
+      "passed": 2,
+      "failed": 0
+    },
+    "Severity": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Colloquial": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Spelling Mistakes": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Incomplete Sentences": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Categorical Evidence": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Past / Resolved": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Contradictory": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Irrelevant Info": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Unsupported/OOD": {
+      "cases": 3,
+      "passed": 0,
+      "failed": 3
+    },
+    "Multi-turn": {
+      "cases": 2,
+      "passed": 0,
+      "failed": 2
+    },
+    "Question Phrasing": {
+      "cases": 5,
+      "passed": 5,
+      "failed": 0
+    },
+    "Safety Red Flag": {
+      "cases": 6,
+      "passed": 6,
+      "failed": 0
+    }
+  },
+  "schema_validity_pct": 40.0,
+  "evidence_accuracy_pct": 100.0,
+  "present_accuracy_pct": 100.0,
+  "absent_accuracy_pct": 100.0,
+  "unknown_accuracy_pct": 100.0,
+  "duration_accuracy_pct": 100.0,
+  "severity_accuracy_pct": 0.0,
+  "hallucinated_count": 0,
+  "hallucination_rate_pct": 0.0,
+  "ood_hallucinated_count": 0,
+  "safety_bypass_count": 0,
+  "safety_bypass_rate_pct": 0.0,
+  "controlled_question_violations": 0,
+  "phrasing_validity_pct": 100.0,
+  "fallback_count": 21,
+  "fallback_rate_pct": 52.5,
+  "api_error_count": 21,
+  "api_error_rate_pct": 52.5,
+  "results": [
+    {
+      "id": "POS_1",
+      "category": "Simple Positive",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_91"
+        ],
+        "absent": [],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "POS_2",
+      "category": "Simple Positive",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_77"
+        ],
+        "absent": [],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "POS_3",
+      "category": "Simple Positive",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_194"
+        ],
+        "absent": [],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "NEG_1",
+      "category": "Negation",
+      "passed": true,
+      "extracted": {
+        "present": [],
+        "absent": [
+          "E_91"
+        ],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "NEG_2",
+      "category": "Negation",
+      "passed": true,
+      "extracted": {
+        "present": [],
+        "absent": [
+          "E_77",
+          "E_181"
+        ],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "NEG_3",
+      "category": "Negation",
+      "passed": true,
+      "extracted": {
+        "present": [],
+        "absent": [
+          "E_53"
+        ],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "UNC_1",
+      "category": "Uncertainty",
+      "passed": true,
+      "extracted": {
+        "present": [],
+        "absent": [],
+        "unknown": [
+          "E_91"
+        ],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "UNC_2",
+      "category": "Uncertainty",
+      "passed": true,
+      "extracted": {
+        "present": [],
+        "absent": [],
+        "unknown": [
+          "E_77"
+        ],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "MUL_1",
+      "category": "Multiple Symptoms",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_127",
+          "E_24"
+        ],
+        "absent": [],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "MUL_2",
+      "category": "Multiple Symptoms",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_91",
+          "E_89"
+        ],
+        "absent": [],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "MIX_1",
+      "category": "Mixed Pos/Neg",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_194",
+          "E_127"
+        ],
+        "absent": [
+          "E_91"
+        ],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "MIX_2",
+      "category": "Mixed Pos/Neg",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_77"
+        ],
+        "absent": [
+          "E_88"
+        ],
+        "unknown": [],
+        "duration": null,
+        "severity": null
+      }
+    },
+    {
+      "id": "DUR_1",
+      "category": "Duration",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_127"
+        ],
+        "absent": [],
+        "unknown": [],
+        "duration": "3 days",
+        "severity": null
+      }
+    },
+    {
+      "id": "DUR_2",
+      "category": "Duration",
+      "passed": true,
+      "extracted": {
+        "present": [
+          "E_77"
+        ],
+        "absent": [],
+        "unknown": [],
+        "duration": "2 weeks",
+        "severity": null
+      }
+    },
+    {
+      "id": "SEV_1",
+      "category": "Severity",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "SEV_2",
+      "category": "Severity",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "COL_1",
+      "category": "Colloquial",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "COL_2",
+      "category": "Colloquial",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "SPL_1",
+      "category": "Spelling Mistakes",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "SPL_2",
+      "category": "Spelling Mistakes",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "INC_1",
+      "category": "Incomplete Sentences",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "INC_2",
+      "category": "Incomplete Sentences",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "CAT_1",
+      "category": "Categorical Evidence",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "CAT_2",
+      "category": "Categorical Evidence",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "PST_1",
+      "category": "Past / Resolved",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "PST_2",
+      "category": "Past / Resolved",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "CON_1",
+      "category": "Contradictory",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "CON_2",
+      "category": "Contradictory",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "IRR_1",
+      "category": "Irrelevant Info",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "IRR_2",
+      "category": "Irrelevant Info",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "OOD_1",
+      "category": "Unsupported/OOD",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "OOD_2",
+      "category": "Unsupported/OOD",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "OOD_3",
+      "category": "Unsupported/OOD",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "MT_1",
+      "category": "Multi-turn",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "MT_2",
+      "category": "Multi-turn",
+      "passed": false,
+      "error": "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects"
+    },
+    {
+      "id": "PHR_1",
+      "category": "Question Phrasing",
+      "passed": true,
+      "phrased": "Do you have a fever?"
+    },
+    {
+      "id": "PHR_2",
+      "category": "Question Phrasing",
+      "passed": true,
+      "phrased": "Do you have a cough?"
+    },
+    {
+      "id": "PHR_3",
+      "category": "Question Phrasing",
+      "passed": true,
+      "phrased": "Are you experiencing a headache?"
+    },
+    {
+      "id": "PHR_4",
+      "category": "Question Phrasing",
+      "passed": true,
+      "phrased": "Are you having shortness of breath?"
+    },
+    {
+      "id": "PHR_5",
+      "category": "Question Phrasing",
+      "passed": true,
+      "phrased": "Do you have stomach or abdominal pain?"
+    },
+    {
+      "id": "SAF_1",
+      "category": "Safety Red Flag",
+      "passed": true,
+      "notes": "Escalated via ['RED_FLAG_CHEST_PAIN_SEVERE']"
+    },
+    {
+      "id": "SAF_2",
+      "category": "Safety Red Flag",
+      "passed": true,
+      "notes": "Escalated via ['RED_FLAG_BREATHING_DIFFICULTY']"
+    },
+    {
+      "id": "SAF_3",
+      "category": "Safety Red Flag",
+      "passed": true,
+      "notes": "Escalated via ['RED_FLAG_LOSS_OF_CONSCIOUSNESS']"
+    },
+    {
+      "id": "SAF_4",
+      "category": "Safety Red Flag",
+      "passed": true,
+      "notes": "Escalated via ['RED_FLAG_SEVERE_BLEEDING']"
+    },
+    {
+      "id": "SAF_5",
+      "category": "Safety Red Flag",
+      "passed": true,
+      "notes": "Escalated via ['RED_FLAG_SUDDEN_NEUROLOGICAL_DEFICIT']"
+    },
+    {
+      "id": "SAF_6",
+      "category": "Safety Red Flag",
+      "passed": true,
+      "notes": "Escalated via ['RED_FLAG_ANAPHYLAXIS']"
+    }
+  ]
+}

@@ -154,6 +154,9 @@ class ConversationalTriageOrchestrator:
             state.symptom_duration = extracted.duration
         if extracted.severity:
             state.symptom_severity = extracted.severity
+        if extracted.measurements:
+            for m in extracted.measurements:
+                state.measurements[m.name] = m.value
 
         # 5. Step 4 Hard Safety Gate: Deterministic Post-Extraction Screening
         post_flags = self._screen_post_extraction_flags(state)

@@ -117,3 +117,15 @@ def test_conversational_triage_emergency_red_flag_api(
     )
     assert res_blocked.status_code == 400
     assert "SESSION_NOT_IN_PROGRESS" in res_blocked.json()["error"]["code"]
+
+    # 4. Fetch emergency session details (regression test for conversational triage completion)
+    res_get = client.get(
+        f"/api/v1/triage/sessions/{session_id}",
+        headers=patient_headers,
+    )
+    assert res_get.status_code == 200
+    s_data = res_get.json()
+    assert s_data["status"] == "ESCALATED"
+    assert s_data["assessment"] is not None
+    assert s_data["assessment"]["red_flag_detected"] is True
+    assert "Emergency warning signs were detected" in s_data["assessment"]["guidance"]

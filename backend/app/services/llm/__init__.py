@@ -1,10 +1,11 @@
 from app.core.config import settings
-from app.services.llm.gemini import GeminiProvider, LLMExtractionError
+from app.services.llm.gemini import GeminiProvider, LLMExtractionError, is_diagnostic_claim
 from app.services.llm.mock import MockLLMProvider
 from app.services.llm.provider import (
     EvidenceStatus,
     ExtractedEvidenceItem,
     ExtractedEvidenceResult,
+    MeasurementItem,
     LLMProvider,
 )
 
@@ -21,8 +22,10 @@ __all__ = [
     "EvidenceStatus",
     "ExtractedEvidenceItem",
     "ExtractedEvidenceResult",
+    "MeasurementItem",
     "GeminiProvider",
     "MockLLMProvider",
     "LLMExtractionError",
     "get_llm_provider",
+    "is_diagnostic_claim",
 ]

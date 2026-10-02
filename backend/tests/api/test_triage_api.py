@@ -80,6 +80,18 @@ def test_triage_api_end_to_end_flow(
     assert "guidance" in assessment
     assert assessment["recommended_specialty_name"] is not None
 
+    # 6. Fetch completed session details (regression test for assessment serialization & guidance)
+    res_get = client.get(
+        f"/api/v1/triage/sessions/{session_id}",
+        headers=patient_headers,
+    )
+    assert res_get.status_code == 200
+    session_details = res_get.json()
+    assert session_details["assessment"] is not None
+    assert "guidance" in session_details["assessment"]
+    assert len(session_details["assessment"]["guidance"]) > 0
+    assert session_details["assessment"]["recommended_specialty_name"] is not None
+
 
 def test_triage_api_emergency_red_flag(
     client: TestClient,
@@ -121,6 +133,17 @@ def test_triage_api_emergency_red_flag(
     assert ass["needs_escalation"] is True
     assert "RED_FLAG_CHEST_PAIN_SEVERE" in ass["red_flag_codes"]
     assert "Emergency warning signs were detected" in ass["guidance"]
+
+    # Verify completed emergency session details GET serialization
+    res_get_emerg = client.get(
+        f"/api/v1/triage/sessions/{session_id}",
+        headers=patient_headers,
+    )
+    assert res_get_emerg.status_code == 200
+    emerg_details = res_get_emerg.json()
+    assert emerg_details["assessment"] is not None
+    assert emerg_details["assessment"]["red_flag_detected"] is True
+    assert "Emergency warning signs were detected" in emerg_details["assessment"]["guidance"]
 
 
 def test_cross_patient_triage_access_forbidden(
