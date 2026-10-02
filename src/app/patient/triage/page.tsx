@@ -25,6 +25,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { RedFlagAlert } from "@/types";
+import { EMERGENCY_CONTACT } from "@/lib/constants";
 
 const TRIAGE_SESSION_ID_KEY = "careroute_triage_session_id";
 
@@ -105,8 +106,8 @@ function TriageChatContent() {
                     "Emergency warning signs were identified. Emergency evaluation is required.",
                   actionRecommendation:
                     sessionDetails.assessment.guidance ||
-                    "Proceed immediately to the nearest Emergency Department or dial 911.",
-                  hotline: "911 / (800) 555-ER-TRIAGE",
+                    EMERGENCY_CONTACT.guidanceText,
+                  hotline: EMERGENCY_CONTACT.hotlineText,
                 });
               } else if (
                 sessionDetails.status === "COMPLETED" ||
@@ -222,8 +223,8 @@ function TriageChatContent() {
             "Emergency warning signs were detected during clinical triage intake.",
           actionRecommendation:
             turn.assessment?.guidance ||
-            "Proceed immediately to the nearest Emergency Department or dial 911. Do not drive yourself.",
-          hotline: "911 / (800) 555-ER-TRIAGE",
+            EMERGENCY_CONTACT.guidanceText,
+          hotline: EMERGENCY_CONTACT.hotlineText,
         };
         setSafetyAlert(alert);
         if (turn.assessment) {
@@ -244,6 +245,12 @@ function TriageChatContent() {
               "careroute_triage_specialties",
               JSON.stringify([specialtyName])
             );
+            if (turn.assessment.recommended_specialty_id) {
+              sessionStorage.setItem(
+                "careroute_triage_specialty_id",
+                turn.assessment.recommended_specialty_id
+              );
+            }
             sessionStorage.setItem(
               "careroute_triage_care_direction",
               turn.assessment.guidance || "Outpatient Clinical Consultation"
@@ -273,6 +280,7 @@ function TriageChatContent() {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem(TRIAGE_SESSION_ID_KEY);
       sessionStorage.removeItem("careroute_triage_specialties");
+      sessionStorage.removeItem("careroute_triage_specialty_id");
       sessionStorage.removeItem("careroute_triage_care_direction");
     }
     setSessionId(null);
@@ -285,7 +293,11 @@ function TriageChatContent() {
   };
 
   const handleProceedToDoctorMatching = () => {
-    router.push("/patient/doctors");
+    if (sessionId) {
+      router.push(`/patient/doctors?session_id=${encodeURIComponent(sessionId)}`);
+    } else {
+      router.push("/patient/doctors");
+    }
   };
 
   const isInputDisabled =
@@ -419,7 +431,9 @@ function TriageChatContent() {
           <AlertCircle size={20} className="text-rose-600 shrink-0 mt-0.5" />
           <div className="flex-1 space-y-1">
             <h4 className="font-semibold text-sm text-rose-900">
-              Communication Error
+              {errorMessage.includes("temporarily unavailable")
+                ? "Service Temporarily Unavailable"
+                : "Communication Error"}
             </h4>
             <p className="text-xs md:text-sm text-rose-800">{errorMessage}</p>
           </div>

@@ -1,5 +1,189 @@
+import { getSupabaseClient } from "@/lib/supabase/client";
 import { Doctor } from "@/types";
 
+export interface DoctorRecommendationRequest {
+  hospital_id?: string | null;
+  specialty_id?: string | null;
+  triage_session_id?: string | null;
+  consultation_mode?: string | null;
+  appointment_date?: string | null;
+  preferred_doctor_id?: string | null;
+  preferred_language?: string | null;
+  require_availability?: boolean;
+  limit?: number;
+}
+
+export interface RecommendationFactorBreakdown {
+  specialty_match: boolean;
+  specialty_is_primary: boolean;
+  specialty_score: number;
+  has_available_slots: boolean;
+  available_slot_count: number;
+  availability_score: number;
+  estimated_wait_minutes: number;
+  wait_score: number;
+  years_of_experience: number;
+  experience_score: number;
+  average_rating: number;
+  rating_count: number;
+  rating_reliability_score: number;
+  preference_match: boolean;
+  preference_score: number;
+  language_match: boolean;
+  language_score: number;
+  raw_weights?: Record<string, number>;
+}
+
+export interface ProfileResponse {
+  id: string;
+  auth_user_id: string;
+  role: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  avatar_url?: string | null;
+}
+
+export interface HospitalResponse {
+  id: string;
+  name: string;
+  code: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  is_active: boolean;
+}
+
+export interface DepartmentResponse {
+  id: string;
+  hospital_id: string;
+  name: string;
+  code: string;
+  description?: string | null;
+  is_active: boolean;
+}
+
+export interface SpecialtyResponse {
+  id: string;
+  name: string;
+  code: string;
+  description?: string | null;
+  is_active: boolean;
+}
+
+export interface DoctorSpecialtyResponse {
+  id: string;
+  doctor_id: string;
+  specialty_id: string;
+  is_primary: boolean;
+  specialty?: SpecialtyResponse | null;
+}
+
+export interface RecommendedDoctorProfile {
+  id: string;
+  profile_id: string;
+  hospital_id: string;
+  department_id?: string | null;
+  license_number: string;
+  years_of_experience: number;
+  consultation_mode: string;
+  average_rating: number;
+  rating_count: number;
+  languages: string;
+  is_active: boolean;
+  profile: ProfileResponse;
+  hospital?: HospitalResponse | null;
+  department?: DepartmentResponse | null;
+  specialties: DoctorSpecialtyResponse[];
+}
+
+export interface DoctorRecommendationItem {
+  doctor_id: string;
+  rank: number;
+  score: number;
+  estimated_wait_minutes: number;
+  consultation_mode: string;
+  matched_factors: string[];
+  explanation: string;
+  doctor: RecommendedDoctorProfile;
+  factor_breakdown: RecommendationFactorBreakdown;
+}
+
+export interface DoctorRecommendationResponse {
+  recommendations: DoctorRecommendationItem[];
+  status: "SUCCESS" | "NO_ELIGIBLE_DOCTORS" | "EMERGENCY_ESCALATION" | string;
+  message: string;
+  applied_specialty_id?: string | null;
+  applied_specialty_name?: string | null;
+  applied_hospital_id: string;
+  total_eligible_doctors: number;
+  is_emergency_escalation: boolean;
+  escalation_notice?: string | null;
+}
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  if (typeof window !== "undefined") {
+    // 1. Explicit token in localStorage / sessionStorage
+    const storedToken =
+      localStorage.getItem("careroute_auth_token") ||
+      sessionStorage.getItem("careroute_auth_token");
+    if (storedToken) {
+      headers["Authorization"] = `Bearer ${storedToken}`;
+      return headers;
+    }
+
+    // 2. Supabase auth token
+    try {
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.access_token) {
+          headers["Authorization"] = `Bearer ${data.session.access_token}`;
+          return headers;
+        }
+      }
+    } catch {
+      // Supabase not configured or in fallback mode
+    }
+
+    // 3. Fallback dev token from environment variable if configured
+    if (process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN) {
+      headers["Authorization"] = `Bearer ${process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN}`;
+    }
+  }
+
+  return headers;
+}
+
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    let errorMessage = `HTTP error ${res.status}`;
+    try {
+      const data = await res.json();
+      if (data?.error?.message) {
+        errorMessage = data.error.message;
+      } else if (data?.detail) {
+        errorMessage =
+          typeof data.detail === "string"
+            ? data.detail
+            : JSON.stringify(data.detail);
+      }
+    } catch {
+      // Non-JSON response
+    }
+    throw new Error(errorMessage);
+  }
+  return res.json() as Promise<T>;
+}
+
+// Retained static mock database for non-recommendation fallback/preview
 export const DOCTORS_DATABASE: Doctor[] = [
   {
     id: "doc_202",
@@ -79,6 +263,22 @@ export const DOCTORS_DATABASE: Doctor[] = [
 ];
 
 export class DoctorService {
+  /**
+   * POST /api/v1/doctors/recommend
+   * Recommends and ranks eligible doctors based on triage session or direct specialty.
+   */
+  async recommendDoctors(
+    request: DoctorRecommendationRequest
+  ): Promise<DoctorRecommendationResponse> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/doctors/recommend`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(request),
+    });
+    return handleResponse<DoctorRecommendationResponse>(res);
+  }
+
   getAllDoctors(): Doctor[] {
     return DOCTORS_DATABASE;
   }
@@ -95,7 +295,6 @@ export class DoctorService {
       let score = 50;
       const matchReasons: string[] = [];
 
-      // Factor 1: Clinical specialty alignment
       const matchesSpecialty = recommendedSpecialties.some((spec) =>
         doc.specialty.toLowerCase().includes(spec.toLowerCase())
       );
@@ -106,7 +305,6 @@ export class DoctorService {
         matchReasons.push("General outpatient medical expertise");
       }
 
-      // Factor 2: Queue load & availability
       if (doc.activeQueueCount <= 4) {
         score += 15;
         matchReasons.push(`Low queue load (${doc.activeQueueCount} patients currently ahead)`);
@@ -114,13 +312,11 @@ export class DoctorService {
         matchReasons.push(`Moderate clinic volume (${doc.activeQueueCount} patients in queue)`);
       }
 
-      // Factor 3: Language proficiency
       if (doc.languages.includes(preferredLanguage)) {
         score += 10;
         matchReasons.push(`Fluent in your preferred language (${preferredLanguage})`);
       }
 
-      // Factor 4: Shorter estimated wait
       if (doc.currentWaitRange.min <= 20) {
         score += 10;
         matchReasons.push(`Estimated wait of ${doc.currentWaitRange.min}–${doc.currentWaitRange.max} min`);

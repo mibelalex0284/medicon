@@ -1,10 +1,11 @@
 import json
 import re
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 from pydantic import ValidationError
 
 from app.core.config import settings
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, TriageLLMUnavailableError
 from app.core.logging import logger
 from app.services.llm.provider import (
     EvidenceStatus,
@@ -25,10 +26,119 @@ class LLMExtractionError(AppException):
         super().__init__(code=code, message=message, status_code=502)
 
 
+# Failure categories as defined in CareRoute-X triage safety specification
+FAILURE_CATEGORY_QUOTA_EXCEEDED = "QUOTA_EXCEEDED"
+FAILURE_CATEGORY_AUTHENTICATION_ERROR = "AUTHENTICATION_ERROR"
+FAILURE_CATEGORY_NETWORK_ERROR = "NETWORK_ERROR"
+FAILURE_CATEGORY_VALIDATION_ERROR = "VALIDATION_ERROR"
+FAILURE_CATEGORY_SERVICE_UNAVAILABLE = "SERVICE_UNAVAILABLE"
+FAILURE_CATEGORY_UNKNOWN = "UNKNOWN"
+
+
+def classify_gemini_error(exc: Exception) -> Tuple[str, Optional[int], bool]:
+    """Classifies Gemini exceptions into structured failure categories:
+    (failure_category, http_status, is_quota_limit)
+    """
+    err_str = str(exc).lower()
+    exc_type = exc.__class__.__name__.lower()
+
+    # 1. Quota / rate-limit / prepayment exhaustion
+    if (
+        "429" in err_str
+        or "resource_exhausted" in err_str
+        or "quota" in err_str
+        or "rate limit" in err_str
+        or "perday" in err_str
+        or "prepayment credits" in err_str
+        or "credits are depleted" in err_str
+    ):
+        return FAILURE_CATEGORY_QUOTA_EXCEEDED, 429, True
+
+    # 2. Authentication / authorization
+    if (
+        "401" in err_str
+        or "403" in err_str
+        or "unauthenticated" in err_str
+        or "permission_denied" in err_str
+        or "api_key" in err_str
+        or "invalid api key" in err_str
+        or "config_missing" in err_str
+    ):
+        status_code = 401 if ("401" in err_str or "unauthenticated" in err_str) else 403
+        return FAILURE_CATEGORY_AUTHENTICATION_ERROR, status_code, False
+
+    # 3. Validation / schema / malformed output
+    if (
+        isinstance(exc, (ValidationError, json.JSONDecodeError))
+        or "json" in err_str
+        or "validation" in err_str
+        or "malformed" in err_str
+        or "schema" in err_str
+    ):
+        return FAILURE_CATEGORY_VALIDATION_ERROR, None, False
+
+    # 4. Network / connection / timeouts
+    if any(
+        term in err_str or term in exc_type
+        for term in [
+            "timeout",
+            "connection",
+            "connect",
+            "dns",
+            "socket",
+            "network",
+            "reset by peer",
+            "broken pipe",
+        ]
+    ):
+        return FAILURE_CATEGORY_NETWORK_ERROR, None, False
+
+    # 5. Service unavailable / 5xx
+    if "503" in err_str or "unavailable" in err_str or "500" in err_str or "502" in err_str:
+        status_code = 503 if "503" in err_str else 500
+        return FAILURE_CATEGORY_SERVICE_UNAVAILABLE, status_code, False
+
+    return FAILURE_CATEGORY_UNKNOWN, None, False
+
+
+def log_gemini_failure(
+    failure_category: str,
+    operation: str,
+    http_status: Optional[int] = None,
+    is_quota_limit: bool = False,
+    session_id: Optional[str] = None,
+    turn_index: Optional[int] = None,
+    model: str = "gemini-3.6-flash",
+) -> None:
+    """Logs a structured Gemini failure event.
+
+    CRITICAL SECURITY CONSTRAINT:
+    Never logs GEMINI_API_KEY, Authorization headers, JWTs, credentials,
+    patient secrets, or free-text narrative medical details.
+    """
+    event = {
+        "provider": "gemini",
+        "model": model,
+        "failure_category": failure_category,
+        "http_status": http_status,
+        "is_quota_limit": is_quota_limit,
+        "operation": operation,
+        "session_id": session_id,
+        "turn_index": turn_index,
+    }
+    logger.error(f"[GEMINI_FAILURE] {json.dumps(event)}")
+
+
 # Curated controlled clinical dictionary mapping natural expressions to canonical DDXPlus codes
+# VERIFIED against release_evidences.json:
+# E_66: "Are you experiencing shortness of breath or difficulty breathing in a significant way?"
+# E_159: "Did you lose consciousness?"
+# E_201: "Do you have a cough?"
+# E_54_@_V_180: Pain characterization "tugging"
 CONTROLLED_EVIDENCE_MAP = {
     "fever": "E_91",
-    "cough": "E_77",
+    "cough": "E_201",
+    "productive cough": "E_77",
     "headache": "E_127",
     "head hurts": "E_127",
     "fatigue": "E_24",
@@ -36,10 +146,10 @@ CONTROLLED_EVIDENCE_MAP = {
     "tired": "E_24",
     "malaise": "E_148",
     "sore throat": "E_194",
-    "dyspnea": "E_88",
-    "shortness of breath": "E_88",
-    "difficulty breathing": "E_88",
-    "can't breathe": "E_88",
+    "dyspnea": "E_66",
+    "shortness of breath": "E_66",
+    "difficulty breathing": "E_66",
+    "can't breathe": "E_66",
     "chest pain": "E_53",
     "crushing chest pain": "E_54_@_V_180",
     "severe chest pain": "E_54_@_V_180",
@@ -59,9 +169,9 @@ CONTROLLED_EVIDENCE_MAP = {
     "racing heartbeat": "E_155",
     "dizziness": "E_214",
     "lightheadedness": "E_214",
-    "fainting": "E_201",
-    "loss of consciousness": "E_201",
-    "syncope": "E_201",
+    "fainting": "E_159",
+    "loss of consciousness": "E_159",
+    "syncope": "E_159",
     "bleeding": "E_45",
     "coughing up blood": "E_45",
     "hemoptysis": "E_45",
@@ -134,7 +244,7 @@ class GeminiProvider:
     3. Precise negation and uncertainty discrimination (PRESENT, ABSENT, UNKNOWN).
     4. Duration and 1-10 severity extraction.
     5. Controlled question phrasing validation (must be a question, no diagnosis, no treatment).
-    6. Fail-fast error handling with automatic fallback to MockLLM.
+    6. Fail-fast error handling with structured logging and TriageLLMUnavailableError (no fallback to mock).
     7. Complete privacy: zero logging of API keys or sensitive data.
     """
 
@@ -169,55 +279,95 @@ class GeminiProvider:
     def _get_client(self):
         if self._client is None:
             if not self.api_key or self.api_key == "your-gemini-api-key-here":
-                raise LLMExtractionError(
-                    message="GEMINI_API_KEY is not configured.",
-                    code="LLM_CONFIG_MISSING",
+                log_gemini_failure(
+                    failure_category=FAILURE_CATEGORY_AUTHENTICATION_ERROR,
+                    operation="client_initialization",
+                    http_status=401,
+                    is_quota_limit=False,
+                    model=self.model,
+                )
+                raise TriageLLMUnavailableError(
+                    message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                    code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
                 )
             try:
                 from google import genai
                 self._client = genai.Client(api_key=self.api_key)
             except Exception as exc:
-                logger.error(f"Failed to initialize google.genai Client: {exc.__class__.__name__}")
-                raise LLMExtractionError(f"Failed to initialize Gemini client: {exc.__class__.__name__}")
+                cat, status_code, is_quota = classify_gemini_error(exc)
+                log_gemini_failure(
+                    failure_category=cat,
+                    operation="client_initialization",
+                    http_status=status_code,
+                    is_quota_limit=is_quota,
+                    model=self.model,
+                )
+                raise TriageLLMUnavailableError(
+                    message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                    code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
+                )
         return self._client
 
     def extract_patient_evidence(
         self, message: str, context: Optional[Dict[str, Any]] = None
     ) -> ExtractedEvidenceResult:
-        """Extracts structured evidence items, duration, and severity using Gemini 3.6 Flash."""
+        """Extracts structured evidence items, duration, and severity using Gemini 3.6 Flash.
+
+        Leverages active question context to interpret affirmative, negative, and uncertain responses.
+        Fails fast with structured logging and TriageLLMUnavailableError on any API failure.
+        """
+        session_id = context.get("session_id") if context else None
+        turn_index = context.get("turn_index") if context else None
+
         client = self._get_client()
 
         # Vocabulary guide passed to Gemini
         vocab_guide = ", ".join(f"'{k}' -> {v}" for k, v in list(CONTROLLED_EVIDENCE_MAP.items())[:35])
+
+        # Context-aware extraction instructions
+        active_q = context.get("active_question_text") if context else None
+        active_ev = context.get("active_evidence_id") if context else None
+        chief_complaint = context.get("chief_complaint") if context else None
 
         system_instruction = (
             "You are a specialized clinical evidence extraction assistant for CareRoute-X triage. "
             "Your task is to extract ONLY symptoms, negations, duration, and severity explicitly stated by the patient.\n\n"
             "STRICT CLINICAL RULES:\n"
             "1. Do NOT hallucinate or infer unmentioned symptoms.\n"
-            "2. NEGATION: If the patient denies or states they do NOT have a symptom (e.g. 'I don't have a fever', 'no chest pain', 'without cough'), "
-            "mark status='ABSENT'.\n"
-            "3. UNCERTAINTY: If the patient expresses uncertainty (e.g. 'not sure if I have a fever', 'might have a fever', 'maybe'), "
-            "mark status='UNKNOWN'.\n"
-            "4. AFFIRMATIVE: Only assign status='PRESENT' if the patient affirmatively confirms having the current symptom.\n"
-            "5. PAST RESOLVED SYMPTOMS: If a symptom resolved in the past (e.g. 'had a fever last week but not now'), do NOT mark it as PRESENT.\n"
-            "6. MULTIPLE SYMPTOMS: Extract ALL distinct symptoms mentioned.\n"
-            "7. DURATION: Extract duration into the 'duration' string field if mentioned (e.g. '3 days', 'since yesterday', 'about a week').\n"
-            "8. SEVERITY: If pain/severity is rated on a 1-10 scale (e.g. '7 out of 10'), set severity=7 (integer 1-10).\n"
-            "9. CONTROLLED VOCABULARY: You must map symptoms strictly to the known DDXPlus evidence codes:\n"
+            "2. CONTEXTUAL RESOLUTION FOR PATIENT RESPONSES:\n"
+            "   When an active clinical question and evidence ID are provided in context, the patient's reply is primarily addressing that question.\n"
+            "   - AFFIRMATIVE: If the patient affirms, confirms, or agrees (e.g., 'yes', 'yeah', 'yep', 'I do', 'definitely', 'sure', 'true', 'correct'), "
+            "     extract the active evidence ID with status='PRESENT'.\n"
+            "   - NEGATION: If the patient denies, disagrees, or states they do not have it (e.g., 'no', 'nope', 'nah', 'not really', 'I don't', 'negative', 'none'), "
+            "     extract the active evidence ID with status='ABSENT'.\n"
+            "   - UNCERTAINTY: If the patient is unsure (e.g., 'not sure', 'maybe', 'possibly', 'I don't know'), "
+            "     extract the active evidence ID with status='UNKNOWN'.\n"
+            "3. DIRECT STATEMENTS: Also extract any other symptoms, negations, duration, or severity mentioned in the patient's message.\n"
+            "4. DURATION: Extract duration into the 'duration' string field if mentioned (e.g. '3 days', 'since yesterday', 'about a week').\n"
+            "5. SEVERITY: If pain/severity is rated on a 1-10 scale (e.g. '7 out of 10'), set severity=7 (integer 1-10).\n"
+            "6. CONTROLLED VOCABULARY: Map symptoms strictly to known DDXPlus evidence codes.\n"
             f"   Reference dictionary: {vocab_guide}\n"
-            "   CRITICAL: Do NOT invent arbitrary or fictitious evidence codes. If a symptom cannot be confidently mapped to a known code, "
-            "do NOT create a new E_xxx code; omit it or use an unmapped description in chief_complaint.\n"
-            "10. Output MUST strictly conform to the ExtractedEvidenceResult schema."
+            "   CRITICAL: Do NOT invent arbitrary or fictitious evidence codes.\n"
+            "7. Output MUST strictly conform to the ExtractedEvidenceResult schema."
         )
 
-        prompt = f'Patient message: "{message}"\nExtract structured clinical evidence.'
+        context_lines = []
+        if active_q and active_ev:
+            context_lines.append(f'Active clinical question asked to patient: "{active_q}"')
+            context_lines.append(f"Investigating DDXPlus evidence ID: {active_ev}")
+        if chief_complaint:
+            context_lines.append(f'Initial patient complaint: "{chief_complaint}"')
+
+        context_header = "\n".join(context_lines)
+        if context_header:
+            prompt = f'{context_header}\n\nPatient message: "{message}"\nExtract structured clinical evidence.'
+        else:
+            prompt = f'Patient message: "{message}"\nExtract structured clinical evidence.'
 
         from google.genai import types
-        import time
 
         last_err = None
-        for attempt in range(3):
+        for attempt in range(2):
             try:
                 response = client.models.generate_content(
                     model=self.model,
@@ -254,35 +404,66 @@ class GeminiProvider:
             except (json.JSONDecodeError, ValidationError) as parse_err:
                 last_err = parse_err
                 logger.warning(f"Gemini output parsing attempt {attempt + 1} failed: {parse_err}")
-                if attempt < 2:
-                    time.sleep(1.0)
+                if attempt < 1:
+                    time.sleep(0.5)
                     continue
-                raise LLMExtractionError(f"Malformed LLM response: {parse_err}")
+                cat = FAILURE_CATEGORY_VALIDATION_ERROR
+                log_gemini_failure(
+                    failure_category=cat,
+                    operation="evidence_extraction",
+                    http_status=None,
+                    is_quota_limit=False,
+                    session_id=session_id,
+                    turn_index=turn_index,
+                    model=self.model,
+                )
+                raise TriageLLMUnavailableError(
+                    message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                    code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
+                )
             except Exception as exc:
                 last_err = exc
                 err_str = str(exc)
 
-                # FAIL FAST: permanent quota / billing exhaustion (NO SLEEP, NO RETRY)
+                # Check quota / rate limit
+                cat, status_code, is_quota = classify_gemini_error(exc)
+
+                # FAIL FAST: permanent quota / billing exhaustion
                 if self._is_permanent_quota_error(err_str):
-                    logger.error(f"Gemini API quota/prepayment credits depleted: {err_str}")
-                    raise LLMExtractionError(
-                        "Gemini prepayment credits are depleted or billing quota exhausted. Please check billing at https://ai.studio/projects",
-                        code="LLM_QUOTA_EXHAUSTED",
+                    log_gemini_failure(
+                        failure_category=FAILURE_CATEGORY_QUOTA_EXCEEDED,
+                        operation="evidence_extraction",
+                        http_status=429,
+                        is_quota_limit=True,
+                        session_id=session_id,
+                        turn_index=turn_index,
+                        model=self.model,
+                    )
+                    raise TriageLLMUnavailableError(
+                        message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                        code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
                     )
 
-                # Transient rate limit: bounded retry only
-                if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and attempt < 2:
+                if is_quota and attempt < 1:
                     m = re.search(r"retry in (\d+(?:\.\d+)?)s", err_str, re.IGNORECASE)
-                    delay = min(int(float(m.group(1))) + 1, 15) if m else 5
-                    logger.warning(f"Gemini transient 429 rate limit hit. Backing off for {delay}s...")
+                    delay = min(int(float(m.group(1))) + 1, 5) if m else 2
+                    logger.warning(f"Gemini transient rate limit hit. Backing off for {delay}s...")
                     time.sleep(delay)
                     continue
 
-                logger.error(f"Gemini API call attempt {attempt + 1} failed: {exc.__class__.__name__}")
-                if attempt < 2:
-                    time.sleep(1.0)
-                    continue
-                raise LLMExtractionError(f"Gemini communication error: {exc.__class__.__name__}")
+                log_gemini_failure(
+                    failure_category=cat,
+                    operation="evidence_extraction",
+                    http_status=status_code,
+                    is_quota_limit=is_quota,
+                    session_id=session_id,
+                    turn_index=turn_index,
+                    model=self.model,
+                )
+                raise TriageLLMUnavailableError(
+                    message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                    code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
+                )
 
     def phrase_question(
         self, controlled_question: str, evidence_id: str, context: Optional[Dict[str, Any]] = None
@@ -295,10 +476,26 @@ class GeminiProvider:
         3. Preserves the exact clinical intent of the controlled question.
         Falls back to controlled_question if phrasing fails or violates constraints.
         """
+        session_id = context.get("session_id") if context else None
+        turn_index = context.get("turn_index") if context else None
+
         try:
             client = self._get_client()
-        except Exception:
-            return controlled_question
+        except Exception as exc:
+            cat, status_code, is_quota = classify_gemini_error(exc)
+            log_gemini_failure(
+                failure_category=cat,
+                operation="question_phrasing",
+                http_status=status_code,
+                is_quota_limit=is_quota,
+                session_id=session_id,
+                turn_index=turn_index,
+                model=self.model,
+            )
+            raise TriageLLMUnavailableError(
+                message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
+            )
 
         system_instruction = (
             "You are an empathetic, professional outpatient care-navigation assistant. "
@@ -401,18 +598,41 @@ class GeminiProvider:
 
             except Exception as exc:
                 err_str = str(exc)
+                cat, status_code, is_quota = classify_gemini_error(exc)
+
+                # FAIL FAST: permanent quota / billing exhaustion
                 if self._is_permanent_quota_error(err_str):
-                    logger.error(f"Gemini API quota/prepayment credits depleted: {err_str}")
-                    return controlled_question
-                if ("429" in err_str or "RESOURCE_EXHAUSTED" in err_str) and attempt == 0:
-                    import time
-                    m = re.search(r"retry in (\d+(?:\.\d+)?)s", err_str, re.IGNORECASE)
-                    delay = min(int(float(m.group(1))) + 1, 15) if m else 5
-                    logger.warning(f"Gemini phrasing transient 429 rate limit hit. Backing off for {delay}s...")
-                    time.sleep(delay)
+                    log_gemini_failure(
+                        failure_category=FAILURE_CATEGORY_QUOTA_EXCEEDED,
+                        operation="question_phrasing",
+                        http_status=429,
+                        is_quota_limit=True,
+                        session_id=session_id,
+                        turn_index=turn_index,
+                        model=self.model,
+                    )
+                    raise TriageLLMUnavailableError(
+                        message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                        code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
+                    )
+
+                if is_quota and attempt < 1:
+                    time.sleep(1.0)
                     continue
-                logger.warning(f"Gemini phrasing failed, falling back to controlled question: {exc.__class__.__name__}")
-                return controlled_question
+
+                log_gemini_failure(
+                    failure_category=cat,
+                    operation="question_phrasing",
+                    http_status=status_code,
+                    is_quota_limit=is_quota,
+                    session_id=session_id,
+                    turn_index=turn_index,
+                    model=self.model,
+                )
+                raise TriageLLMUnavailableError(
+                    message="Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+                    code="TRIAGE_LLM_SERVICE_UNAVAILABLE",
+                )
 
     def summarize_conversation(self, messages: List[Dict[str, str]]) -> str:
         """Summarizes dialogue history for clinician handoff."""

@@ -1,6 +1,7 @@
 import React from "react";
 import { AlertOctagon, PhoneCall, ShieldAlert } from "lucide-react";
 import { RedFlagAlert } from "@/types";
+import { EMERGENCY_CONTACT } from "@/lib/constants";
 
 interface EmergencyBannerProps {
   alert: RedFlagAlert;
@@ -41,11 +42,11 @@ export function EmergencyBanner({ alert, onDismiss }: EmergencyBannerProps) {
 
           <div className="pt-2 flex flex-wrap items-center gap-3">
             <a
-              href="tel:911"
+              href={`tel:${EMERGENCY_CONTACT.primaryNumber}`}
               className="inline-flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-800 text-white text-sm font-bold rounded-lg shadow-sm transition-colors"
             >
               <PhoneCall size={16} />
-              Call Emergency Services (911)
+              {EMERGENCY_CONTACT.displayLabel}
             </a>
             {alert.hotline && (
               <a

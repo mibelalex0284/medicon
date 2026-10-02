@@ -17,6 +17,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { EMERGENCY_CONTACT } from "@/lib/constants";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/patient/dashboard", icon: Home },
@@ -111,7 +112,7 @@ export default function PatientLayout({
                 Emergency Hotline
               </div>
               <p className="text-[11px] text-red-700 leading-tight">
-                Severe chest distress? Dial <strong>911</strong> immediately.
+                Severe chest distress? Dial <strong>{EMERGENCY_CONTACT.primaryNumber}</strong> immediately.
               </p>
             </div>
 

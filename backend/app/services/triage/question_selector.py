@@ -38,7 +38,12 @@ class InformationGainQuestionSelector:
     """
 
     # Critical evidence codes that warrant safety-priority consideration if relevant
-    CRITICAL_SAFETY_EVIDENCES = ["E_88", "E_201", "E_54_@_V_180", "E_45"]
+    # VERIFIED against release_evidences.json:
+    # E_66: Shortness of breath / difficulty breathing
+    # E_159: Loss of consciousness
+    # E_54_@_V_180: Severe / crushing pain characterization
+    # E_45: Coughing up blood (hemoptysis)
+    CRITICAL_SAFETY_EVIDENCES = ["E_66", "E_159", "E_54_@_V_180", "E_45"]
 
     def __init__(self, evidence_provider: Optional[DDXPlusEvidenceProvider] = None):
         self.evidence_provider = evidence_provider or ddxplus_provider

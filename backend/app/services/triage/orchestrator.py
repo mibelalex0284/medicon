@@ -26,7 +26,6 @@ from app.schemas.triage import (
     TriageConversationalTurnResponse,
 )
 from app.services.llm import get_llm_provider
-from app.services.llm.mock import MockLLMProvider
 from app.services.llm.provider import EvidenceStatus, LLMProvider
 from app.services.triage.evidence_provider import DDXPlusEvidenceProvider, ddxplus_provider
 from app.services.triage.question_selector import (
@@ -48,16 +47,20 @@ class ConversationalTriageOrchestrator:
 
     Maintains safe hard gates:
     - Free-text & structured red-flag safety screening executes deterministically.
-    - LLM is strictly an NLP extraction and question phrasing layer.
+    - LLM (Gemini) is strictly an NLP extraction and question phrasing layer.
     - Questions are strictly chosen from the DDXPlus controlled clinical ontology.
-    - Full fallback to rule-based mock extractor if LLM is unavailable.
+    - Conversational triage fails safely with explicit 503 if Gemini is unavailable.
     """
 
     # Critical DDXPlus evidence codes that immediately trip red-flag escalation
+    # VERIFIED against release_evidences.json:
+    # E_66: "Are you experiencing shortness of breath or difficulty breathing in a significant way?"
+    # E_159: "Did you lose consciousness?"
+    # E_54_@_V_180: Severe / crushing chest pain characterization
     EMERGENCY_EVIDENCE_CODES = {
         "E_54_@_V_180": "RED_FLAG_CHEST_PAIN_SEVERE",
-        "E_88": "RED_FLAG_BREATHING_DIFFICULTY",
-        "E_201": "RED_FLAG_LOSS_OF_CONSCIOUSNESS",
+        "E_66": "RED_FLAG_BREATHING_DIFFICULTY",
+        "E_159": "RED_FLAG_LOSS_OF_CONSCIOUSNESS",
     }
 
     def __init__(
@@ -107,6 +110,20 @@ class ConversationalTriageOrchestrator:
 
         state = self._reconstruct_patient_state(session, history, turn_count)
 
+        # Identify active controlled question from last assistant message
+        active_question_text = None
+        active_evidence_id = None
+        for msg in reversed(history):
+            if msg.sender == "assistant" and msg.extracted_evidence:
+                try:
+                    asst_meta = json.loads(msg.extracted_evidence)
+                    if isinstance(asst_meta, dict) and "selected_evidence_id" in asst_meta:
+                        active_evidence_id = asst_meta["selected_evidence_id"]
+                        active_question_text = msg.content
+                        break
+                except Exception:
+                    pass
+
         # 2. Step 1 Hard Safety Gate: Deterministic Pre-Extraction Screening
         raw_red_flags = TriageService._screen_red_flags(
             input_text=patient_message_text.lower(), answers=[]
@@ -122,8 +139,17 @@ class ConversationalTriageOrchestrator:
                 red_flags=raw_red_flags,
             )
 
-        # 3. Step 2: Structured Clinical Extraction via LLM (with Mock fallback)
-        extracted = self._extract_evidence_safe(patient_message_text, state)
+        # 3. Step 2: Structured Clinical Extraction via LLM (Gemini) with Active Question Context
+        extraction_context = {
+            "chief_complaint": state.chief_complaint,
+            "known_present": list(state.known_present_evidence.keys()),
+            "known_absent": state.known_absent_evidence,
+            "active_question_text": active_question_text,
+            "active_evidence_id": active_evidence_id,
+            "session_id": session.id,
+            "turn_index": turn_count,
+        }
+        extracted = self._extract_evidence(patient_message_text, extraction_context)
 
         # 4. Step 3: DDXPlus Ontology Validation
         validated_evidences: List[Dict[str, Any]] = []
@@ -201,9 +227,14 @@ class ConversationalTriageOrchestrator:
             )
 
         # 9. Step 8: Phrased Natural-Language Question via LLM
-        phrased_question = self._phrase_question_safe(
+        phrasing_context = {
+            "session_id": session.id,
+            "turn_index": turn_count,
+        }
+        phrased_question = self._phrase_question(
             controlled_question=next_question.question_text,
             evidence_id=next_question.evidence_id,
+            context=phrasing_context,
         )
 
         # 10. Step 9: Atomic Database Persistence for Active Turn
@@ -302,31 +333,35 @@ class ConversationalTriageOrchestrator:
 
         return state
 
-    def _extract_evidence_safe(
-        self, message_text: str, state: PatientState
+    def _extract_evidence(
+        self, message_text: str, context: Optional[Dict[str, Any]] = None
     ) -> Any:
-        try:
-            return self.llm_provider.extract_patient_evidence(
-                message=message_text,
-                context={
-                    "chief_complaint": state.chief_complaint,
-                    "known_present": list(state.known_present_evidence.keys()),
-                    "known_absent": state.known_absent_evidence,
-                },
-            )
-        except Exception as exc:
-            logger.warning(f"LLM evidence extraction failed, falling back to MockLLM: {exc}")
-            mock = MockLLMProvider()
-            return mock.extract_patient_evidence(message_text)
+        """Invokes the runtime LLMProvider (Gemini) directly.
 
-    def _phrase_question_safe(self, controlled_question: str, evidence_id: str) -> str:
-        try:
-            return self.llm_provider.phrase_question(
-                controlled_question=controlled_question, evidence_id=evidence_id
-            )
-        except Exception as exc:
-            logger.warning(f"LLM question phrasing failed, falling back to direct question: {exc}")
-            return controlled_question
+        Fails fast with TriageLLMUnavailableError (HTTP 503) if Gemini is unavailable.
+        No MockLLM fallback is permitted.
+        """
+        return self.llm_provider.extract_patient_evidence(
+            message=message_text,
+            context=context,
+        )
+
+    def _phrase_question(
+        self,
+        controlled_question: str,
+        evidence_id: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Phrases a controlled clinical question via the runtime LLMProvider (Gemini).
+
+        Fails fast with TriageLLMUnavailableError (HTTP 503) if Gemini is unavailable.
+        No MockLLM fallback is permitted.
+        """
+        return self.llm_provider.phrase_question(
+            controlled_question=controlled_question,
+            evidence_id=evidence_id,
+            context=context,
+        )
 
     def _screen_post_extraction_flags(self, state: PatientState) -> List[str]:
         flags: List[str] = []
@@ -449,16 +484,15 @@ class ConversationalTriageOrchestrator:
             urgency = TriageUrgency.HIGH if top_sev == 4 else TriageUrgency.MODERATE
             confidence = round(1.0 - (state.uncertainty_score * 0.4), 2)
             rationale = (
-                f"Candidate condition '{top_cand.condition if top_cand else 'Unknown'}' carries high clinical severity ({top_sev}). "
-                "Expedited outpatient scheduling recommended."
+                f"Clinical presentation demonstrates elevated outpatient acuity (acuity level {top_sev}). "
+                "Expedited clinical scheduling recommended."
             )
         elif state.uncertainty_score <= self.stopping_policy.min_entropy:
             urgency = TriageUrgency.LOW
             confidence = round(1.0 - (state.uncertainty_score * 0.3), 2)
             rationale = (
-                f"Information gathered indicates standard outpatient acuity with primary presentation "
-                f"aligned with '{top_cand.condition if top_cand else 'General medical concerns'}'. "
-                "Routine outpatient scheduling appropriate."
+                "Reported symptoms indicate standard outpatient acuity. "
+                "Routine outpatient consultation appropriate."
             )
         else:
             urgency = TriageUrgency.MODERATE
@@ -501,13 +535,11 @@ class ConversationalTriageOrchestrator:
         self.db.add(assessment)
         self.db.add(session)
 
-        # 4. Generate Completion Message
+        # 4. Generate Completion Message (Protected Care Navigation - No Provisional Disease Assertion)
         spec_name = specialty.name if specialty else "General Medicine"
-        top_name = top_cand.condition if top_cand else "your reported symptoms"
         assistant_summary_msg = (
-            f"Thank you for answering our questions. Based on your symptoms and clinical details, "
-            f"your presentation is most consistent with {top_name}. "
-            f"We have navigated your care to {spec_name} with {urgency.value} urgency. "
+            f"Thank you for answering our clinical intake questions. Based on your reported symptoms and clinical presentation, "
+            f"we have navigated your care to {spec_name} with {urgency.value} urgency. "
             f"{guidance}"
         )
 

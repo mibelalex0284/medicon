@@ -51,6 +51,17 @@ class InvalidStateTransitionError(AppException):
         super().__init__(code=code, message=message, status_code=status.HTTP_400_BAD_REQUEST)
 
 
+class TriageLLMUnavailableError(AppException):
+    """Raised when the primary LLM provider (Gemini) is unavailable, quota exhausted, or failing."""
+
+    def __init__(
+        self,
+        message: str = "Conversational triage is temporarily unavailable. Please try again later or contact your care provider directly.",
+        code: str = "TRIAGE_LLM_SERVICE_UNAVAILABLE",
+    ):
+        super().__init__(code=code, message=message, status_code=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
 def create_error_response(
     code: str,
     message: str,
