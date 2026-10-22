@@ -222,6 +222,17 @@ class TriageService:
                     "Some clinical presentation factors remain uncertain. "
                     "In-person medical evaluation is advised to ensure safe care navigation."
                 )
+            elif urgency == TriageUrgency.HIGH:
+                guidance = (
+                    "Based on your responses, prompt outpatient clinical evaluation is recommended. "
+                    "Please schedule an urgent appointment with the appropriate clinical specialty. "
+                    "Absence of red-flag symptoms does not guarantee safety; if your condition worsens, seek immediate emergency care."
+                )
+            elif urgency == TriageUrgency.MODERATE:
+                guidance = (
+                    "Based on your responses, timely outpatient clinical evaluation is recommended. "
+                    "Please schedule an appointment with the appropriate clinical specialty."
+                )
             else:
                 guidance = (
                     "Based on your responses, routine care navigation is recommended. "
@@ -252,39 +263,135 @@ class TriageService:
         return assessment
 
     @classmethod
-    def _screen_red_flags(
-        cls, input_text: str, answers: List[TriageAnswer]
-    ) -> List[str]:
-        """Runs strictly deterministic rules on free text and structured question answers."""
-        flags: List[str] = []
+    def _screen_red_flags_detailed(
+        cls, input_text: str, answers: Optional[List[TriageAnswer]] = None
+    ) -> Tuple[List[str], List[str]]:
+        """Runs strictly deterministic rules on free text and structured question answers.
 
-        # 1. Screen free text input against regex rules
-        negations = ["no", "not", "without", "denies", "negative for", "free of"]
-        for code, patterns in cls.RED_FLAG_PATTERNS.items():
-            for pat in patterns:
-                for match in re.finditer(pat, input_text):
-                    prefix = input_text[max(0, match.start() - 25):match.start()].strip()
-                    tokens = prefix.split()
-                    if tokens and tokens[-1] in ["no", "not", "without", "denies"]:
-                        continue  # Negated indicator, e.g. "no chest pain"
-                    if code not in flags:
-                        flags.append(code)
-                    break
+        Returns:
+            Tuple[List[str], List[str]]: (affirmative_red_flags, uncertain_red_flags)
+        """
+        affirmative_flags: List[str] = []
+        uncertain_flags: List[str] = []
+
+        # Split text into clauses on punctuation and contrastive conjunctions
+        # e.g., "I have chest pain, but I don't have breathing difficulty"
+        clause_delimiters = r"[.!?;:]|\b(?:but|however|although|though|except|whereas|yet|while)\b"
+
+        # Explicit uncertainty patterns preceding the symptom in the same clause
+        UNCERTAINTY_PATTERNS = [
+            r"\b(?:not\s+sure|not\s+certain|unsure|uncertain|hard\s+to\s+say|don['’]?t\s+know)\s+(?:if|whether|about)?\b",
+            r"\b(?:wondering\s+if|wondering\s+whether|possibly|maybe|might\s+have|could\s+have)\b",
+        ]
+
+        # Multi-word negation patterns preceding the symptom in the same clause
+        NEGATION_PREFIX_PATTERNS = [
+            r"\b(?:no|not|none|never|without|denies|denying|ruled\s+out|free\s+of|negative\s+for)\b",
+            r"\bdon['’]?t\s+(?:have|feel|experience|suffer|notice)\b",
+            r"\bdo\s+not\s+(?:have|feel|experience|suffer|notice)\b",
+            r"\bdoesn['’]?t\s+(?:have|feel|experience|suffer|notice)\b",
+            r"\bdoes\s+not\s+(?:have|feel|experience|suffer|notice)\b",
+            r"\bdidn['’]?t\s+(?:have|feel|experience|suffer|notice)\b",
+            r"\bdid\s+not\s+(?:have|feel|experience|suffer|notice)\b",
+            r"\bhaven['’]?t\s+(?:had|experienced|felt|noticed)\b",
+            r"\bhave\s+not\s+(?:had|experienced|felt|noticed)\b",
+            r"\bhasn['’]?t\s+(?:had|experienced|felt|noticed)\b",
+            r"\bhas\s+not\s+(?:had|experienced|felt|noticed)\b",
+        ]
+
+        # Post-symptom negation indicators (e.g., "chest pain: none", "chest pain is absent")
+        # Explicitly preserves symptom progression statements like "chest pain has not improved"
+        POST_NEGATION_PATTERNS = [
+            r"^\s*[:=-]?\s*(?:none|negative|absent|ruled\s+out|zero)\b",
+            r"^\s+(?:is|was)\s+(?:absent|ruled\s+out|negative)\b",
+        ]
+
+        clauses = re.split(clause_delimiters, input_text or "", flags=re.IGNORECASE)
+
+        for clause in clauses:
+            clause_str = clause.strip()
+            if not clause_str:
+                continue
+
+            for code, patterns in cls.RED_FLAG_PATTERNS.items():
+                for pat in patterns:
+                    for match in re.finditer(pat, clause_str, flags=re.IGNORECASE):
+                        start, end = match.start(), match.end()
+                        prefix = clause_str[:start].strip()
+                        suffix = clause_str[end:].strip()
+
+                        # 1. Check if prefix contains explicit clinical uncertainty
+                        is_uncertain = False
+                        for unc_pat in UNCERTAINTY_PATTERNS:
+                            if re.search(unc_pat, prefix, re.IGNORECASE):
+                                is_uncertain = True
+                                break
+                        if is_uncertain:
+                            if code not in uncertain_flags and code not in affirmative_flags:
+                                uncertain_flags.append(code)
+                            continue
+
+                        # 2. Check if prefix contains explicit negation within 6 words
+                        is_negated = False
+                        for neg_pat in NEGATION_PREFIX_PATTERNS:
+                            neg_matches = list(re.finditer(neg_pat, prefix, re.IGNORECASE))
+                            if neg_matches:
+                                last_neg = neg_matches[-1]
+                                intervening = prefix[last_neg.end():].strip()
+                                words = intervening.split()
+                                if len(words) <= 6:
+                                    is_negated = True
+                                    break
+
+                        # 3. Check suffix for post-symptom negation ("chest pain: none")
+                        if not is_negated:
+                            for post_pat in POST_NEGATION_PATTERNS:
+                                if re.search(post_pat, suffix, re.IGNORECASE):
+                                    is_negated = True
+                                    break
+
+                        if is_negated:
+                            continue
+
+                        # If not negated and not uncertain, it is affirmative
+                        if code not in affirmative_flags:
+                            affirmative_flags.append(code)
+                        # If previously recorded as uncertain in another clause, affirmative supersedes
+                        if code in uncertain_flags:
+                            uncertain_flags.remove(code)
+                        break
 
         # 2. Screen answers to controlled questions
-        for ans in answers:
-            if not ans.question:
-                continue
-            q_code = ans.question.code
-            ans_val = ans.answer_value.strip().upper()
+        if answers:
+            for ans in answers:
+                if not ans.question:
+                    continue
+                q_code = ans.question.code
+                ans_val = ans.answer_value.strip().upper()
 
-            # Affirmative answer to a red-flag question triggers the flag
-            if ans_val == "YES" and q_code in cls.QUESTION_RED_FLAG_MAP:
-                flag_code = cls.QUESTION_RED_FLAG_MAP[q_code]
-                if flag_code not in flags:
-                    flags.append(flag_code)
+                if ans_val == "YES" and q_code in cls.QUESTION_RED_FLAG_MAP:
+                    flag_code = cls.QUESTION_RED_FLAG_MAP[q_code]
+                    if flag_code not in affirmative_flags:
+                        affirmative_flags.append(flag_code)
+                    if flag_code in uncertain_flags:
+                        uncertain_flags.remove(flag_code)
+                elif ans_val == "UNKNOWN" and q_code in cls.QUESTION_RED_FLAG_MAP:
+                    flag_code = cls.QUESTION_RED_FLAG_MAP[q_code]
+                    if flag_code not in affirmative_flags and flag_code not in uncertain_flags:
+                        uncertain_flags.append(flag_code)
 
-        return flags
+        return affirmative_flags, uncertain_flags
+
+    @classmethod
+    def _screen_red_flags(
+        cls, input_text: str, answers: Optional[List[TriageAnswer]] = None
+    ) -> List[str]:
+        """Runs strictly deterministic rules on free text and structured question answers.
+
+        Returns only confirmed affirmative red flags for backward compatibility.
+        """
+        affirmative_flags, _ = cls._screen_red_flags_detailed(input_text, answers)
+        return affirmative_flags
 
     @classmethod
     def _calculate_urgency_and_confidence(

@@ -31,15 +31,35 @@ export default function DoctorDashboard() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
-    // Initial fetch
-    setQueue(queueService.getDoctorQueue("doc_202"));
-    setActiveConsult(consultationService.getActiveConsultation("doc_202"));
+    let isMounted = true;
+
+    const loadData = async () => {
+      try {
+        const [q, consult] = await Promise.all([
+          queueService.getDoctorQueue("me"),
+          consultationService.getActiveConsultation("me"),
+        ]);
+        if (isMounted) {
+          setQueue(q);
+          setActiveConsult(consult);
+        }
+      } catch {
+        // ignore on unmount
+      }
+    };
+
+    loadData();
 
     const unsubscribe = queueService.subscribe((entries) => {
-      setQueue(entries.filter((e) => e.doctorId === "doc_202"));
+      if (isMounted) {
+        setQueue(entries);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const waitingPatients = queue.filter((q) => q.status === "waiting");
@@ -49,28 +69,29 @@ export default function DoctorDashboard() {
   // Next patient to act on: either currently called, or the first waiting patient
   const nextPatient = calledPatient || waitingPatients[0];
 
-  const handleCallPatient = (queueId: string) => {
+  const handleCallPatient = async (queueId: string) => {
+    if (actionLoading) return;
     setActionLoading(queueId);
-    setTimeout(() => {
-      queueService.callPatient(queueId);
+    try {
+      await queueService.callPatient(queueId);
+      const q = await queueService.getDoctorQueue("me");
+      setQueue(q);
+    } catch {
+      // handle error
+    } finally {
       setActionLoading(null);
-    }, 300);
+    }
   };
 
-  const handleStartConsultation = (patient: QueueEntry) => {
+  const handleStartConsultation = async (patient: QueueEntry) => {
+    if (actionLoading) return;
     setActionLoading(patient.id);
-    setTimeout(() => {
-      queueService.startConsultation(patient.id);
-      consultationService.startNewConsultation(
-        patient.id,
-        patient.patientId,
-        patient.patientName,
-        "doc_202",
-        "Dr. Anita Menon, MD"
-      );
+    try {
+      await queueService.startConsultation(patient.id);
+      router.push(`/doctor/consultation?queue_entry_id=${encodeURIComponent(patient.id)}`);
+    } catch {
       setActionLoading(null);
-      router.push("/doctor/consultation");
-    }, 350);
+    }
   };
 
   return (

@@ -1,5 +1,6 @@
 import datetime
 from typing import List, Optional
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from app.core.exceptions import (
     ConflictError,
@@ -59,13 +60,15 @@ class QueueService:
                 message="Cannot check in for an already completed appointment",
                 code="CANNOT_CHECK_IN_COMPLETED",
             )
+        if appt.status == AppointmentStatus.NO_SHOW:
+            raise InvalidStateTransitionError(
+                message="Cannot check in for an appointment marked as no-show",
+                code="CANNOT_CHECK_IN_NO_SHOW",
+            )
 
         # 3. Idempotency: cannot check in multiple times
         existing_entry = queue_repo.get_by_appointment_id(db, appointment_id)
-        if existing_entry and existing_entry.status not in [
-            QueueStatus.CANCELLED,
-            QueueStatus.NO_SHOW,
-        ]:
+        if existing_entry:
             raise ConflictError(
                 message="Patient is already checked in for this appointment",
                 code="ALREADY_CHECKED_IN",
@@ -87,10 +90,19 @@ class QueueService:
             status=QueueStatus.WAITING,
             checked_in_at=datetime.datetime.now(datetime.timezone.utc),
         )
-        db.add(entry)
-        db.commit()
-        db.refresh(entry)
-        return entry
+        try:
+            db.add(entry)
+            appt.status = AppointmentStatus.CONFIRMED
+            db.add(appt)
+            db.commit()
+            db.refresh(entry)
+            return entry
+        except IntegrityError:
+            db.rollback()
+            raise ConflictError(
+                message="Patient is already checked in for this appointment",
+                code="ALREADY_CHECKED_IN",
+            )
 
     @staticmethod
     def call_patient(db: Session, queue_entry_id: str, doctor_id: str) -> QueueEntry:
@@ -164,7 +176,35 @@ class QueueService:
             consultation_started_at=entry.consultation_started_at,
             patients_ahead=patients_ahead,
             wait_estimate=wait_est,
+            patient_name=entry.patient_name,
+            doctor_name=entry.doctor_name,
+            room_number=entry.room_number,
+            department_name=entry.department_name,
+            chief_complaint=entry.chief_complaint,
         )
+
+    @staticmethod
+    def mark_no_show(db: Session, queue_entry_id: str, doctor_id: str) -> QueueEntry:
+        entry = QueueService.get_queue_entry(db, queue_entry_id)
+        if entry.doctor_id != doctor_id:
+            raise ForbiddenError(
+                message="Access forbidden: you cannot operate another doctor's queue",
+                code="NOT_ASSIGNED_DOCTOR",
+            )
+        if entry.status in [QueueStatus.COMPLETED, QueueStatus.CANCELLED]:
+            raise InvalidStateTransitionError(
+                message=f"Cannot mark entry in '{entry.status.value}' state as NO_SHOW",
+                code="INVALID_QUEUE_TRANSITION",
+            )
+        entry.status = QueueStatus.NO_SHOW
+        appt = appointment_repo.get(db, entry.appointment_id)
+        if appt:
+            appt.status = AppointmentStatus.NO_SHOW
+            db.add(appt)
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        return entry
 
 
 queue_service = QueueService()

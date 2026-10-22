@@ -72,3 +72,31 @@ class Appointment(Base, TimestampMixin):
     consultation: Mapped[Optional["Consultation"]] = relationship(
         "Consultation", back_populates="appointment", uselist=False
     )
+
+    @property
+    def doctor_name(self) -> Optional[str]:
+        if self.doctor and self.doctor.profile:
+            return self.doctor.profile.full_name
+        return None
+
+    @property
+    def doctor_specialty(self) -> Optional[str]:
+        if self.doctor and self.doctor.specialties:
+            primary = next((ds for ds in self.doctor.specialties if ds.is_primary), None)
+            if not primary and len(self.doctor.specialties) > 0:
+                primary = self.doctor.specialties[0]
+            if primary and primary.specialty:
+                return primary.specialty.name
+        return None
+
+    @property
+    def department_name(self) -> Optional[str]:
+        if self.doctor and self.doctor.department:
+            return self.doctor.department.name
+        return None
+
+    @property
+    def queue_token(self) -> Optional[str]:
+        if self.queue_entry:
+            return self.queue_entry.token_number
+        return None

@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-3.6-flash"
     DDXPLUS_DATA_PATH: str = "D:\\22687585.zip"
     TRIAGE_MAX_TURNS: int = 7
-    TRIAGE_MIN_ENTROPY: float = 0.50
+    TRIAGE_MIN_COMPLETENESS: float = 0.70
 
     model_config = SettingsConfigDict(
         env_file=[str(BACKEND_DIR / ".env"), ".env"],

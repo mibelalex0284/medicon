@@ -1,4 +1,8 @@
-"""Machine Learning package for CareRoute-X symptom classification."""
-from ml.inference import SymptomClassifier, symptom_classifier
+"""Machine Learning and clinical reasoning package for CareRoute-X.
 
-__all__ = ["SymptomClassifier", "symptom_classifier"]
+Note: Runtime disease prediction (Symptom2Disease and DDXPlus disease classification)
+has been permanently decommissioned. CareRoute-X is strictly an AI-assisted patient triage,
+care navigation, and pre-consultation intake summarization platform.
+"""
+
+__all__ = []

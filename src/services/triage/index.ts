@@ -41,12 +41,6 @@ export interface SelectedQuestionSummary {
   expected_information_gain?: number;
 }
 
-export interface CandidateConditionSummary {
-  condition: string;
-  probability: number;
-  severity?: number;
-}
-
 export interface TriageAssessmentResponse {
   id: string;
   triage_session_id: string;
@@ -62,6 +56,25 @@ export interface TriageAssessmentResponse {
   assessed_at: string;
 }
 
+export interface PreConsultationReportResponse {
+  session_id: string;
+  patient_id: string;
+  assessed_at?: string | null;
+  urgency: string;
+  recommended_specialty_id?: string | null;
+  recommended_specialty_name?: string | null;
+  chief_complaint: string;
+  symptom_duration?: string | null;
+  patient_reported_severity?: number | null;
+  present_symptoms: string[];
+  absent_symptoms: string[];
+  unknown_symptoms: string[];
+  safety_screenings: Record<string, string>;
+  conversation_summary: string;
+  notice: string;
+  formatted_report: string;
+}
+
 export interface TriageConversationalTurnResponse {
   session_id: string;
   conversation_turn: number;
@@ -71,7 +84,7 @@ export interface TriageConversationalTurnResponse {
   assistant_message: string;
   extracted_evidences?: Record<string, unknown>[];
   selected_question?: SelectedQuestionSummary | null;
-  top_candidate_conditions?: CandidateConditionSummary[];
+  completeness_score?: number;
   uncertainty_score: number;
   safety_flags: string[];
   assessment?: TriageAssessmentResponse | null;
@@ -118,13 +131,27 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+export class TriageApiError extends Error {
+  status: number;
+  code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "TriageApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let errorMessage = `HTTP error ${res.status}`;
+    let errorCode: string | undefined = undefined;
     try {
       const data = await res.json();
       if (data?.error?.message) {
         errorMessage = data.error.message;
+        errorCode = data.error.code;
       } else if (data?.detail) {
         errorMessage =
           typeof data.detail === "string"
@@ -134,7 +161,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     } catch {
       // Response was not JSON
     }
-    throw new Error(errorMessage);
+    throw new TriageApiError(errorMessage, res.status, errorCode);
   }
   return res.json() as Promise<T>;
 }
@@ -211,6 +238,24 @@ export class TriageService {
       }
     );
     return handleResponse<TriageSessionResponse>(res);
+  }
+
+  /**
+   * GET /api/v1/triage/sessions/{session_id}/report
+   * Retrieves the structured Pre-Consultation Intake Report for physician review.
+   */
+  async getPreConsultationReport(
+    sessionId: string
+  ): Promise<PreConsultationReportResponse> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/triage/sessions/${encodeURIComponent(sessionId)}/report`,
+      {
+        method: "GET",
+        headers,
+      }
+    );
+    return handleResponse<PreConsultationReportResponse>(res);
   }
 
   // Deprecated client-side fallback evaluation method preserved for compatibility

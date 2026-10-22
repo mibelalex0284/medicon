@@ -56,8 +56,12 @@ ENV/
 .pytest_cache/
 
 # tests
-tests/
-unit/
+!backend/tests/
 package_lock.json
 package.json
 tsconfig.json
+backend\tests\unit\__pycache__
+tests\frontend
+reports\gemini_request_efficiency_audit.md
+backend\tests
+.env.local

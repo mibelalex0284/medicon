@@ -113,7 +113,7 @@ def setup_clinic_data(db_session: Session):
 
 def test_doctor_availability_slot_generation(db_session: Session, setup_clinic_data: dict):
     doc = setup_clinic_data["doctor"]
-    test_date = datetime.date(2026, 10, 5)  # Monday
+    test_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=7)
 
     avail = appointment_service.get_doctor_availability(
         db_session, doctor_id=doc.id, requested_date=test_date, slot_duration_minutes=30
@@ -146,7 +146,7 @@ def test_overlapping_booking_conflict_rejected(db_session: Session, setup_clinic
     doc = setup_clinic_data["doctor"]
     p1 = setup_clinic_data["patient1"]
     p2 = setup_clinic_data["patient2"]
-    test_date = datetime.date(2026, 10, 6)
+    test_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=8)
 
     # Book 10:00 - 10:30
     appointment_service.book_appointment(
@@ -181,7 +181,7 @@ def test_back_to_back_booking_permitted(db_session: Session, setup_clinic_data: 
     doc = setup_clinic_data["doctor"]
     p1 = setup_clinic_data["patient1"]
     p2 = setup_clinic_data["patient2"]
-    test_date = datetime.date(2026, 10, 7)
+    test_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=9)
 
     # 10:00 - 10:30
     appt1 = appointment_service.book_appointment(
@@ -216,7 +216,7 @@ def test_appointment_cancellation_and_invalid_cancellation(
 ):
     doc = setup_clinic_data["doctor"]
     p1 = setup_clinic_data["patient1"]
-    test_date = datetime.date(2026, 10, 8)
+    test_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=10)
 
     appt = appointment_service.book_appointment(
         db_session,
@@ -248,7 +248,7 @@ def test_check_in_rules_and_token_generation(db_session: Session, setup_clinic_d
     doc = setup_clinic_data["doctor"]
     p1 = setup_clinic_data["patient1"]
     p2 = setup_clinic_data["patient2"]
-    today = datetime.datetime.now(datetime.timezone.utc).date()
+    test_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=1)
 
     # Appointment 1 for patient 1
     appt1 = appointment_service.book_appointment(
@@ -257,7 +257,7 @@ def test_check_in_rules_and_token_generation(db_session: Session, setup_clinic_d
             patient_id=p1.id,
             doctor_id=doc.id,
             hospital_id=doc.hospital_id,
-            appointment_date=today,
+            appointment_date=test_date,
             scheduled_start=datetime.time(9, 0),
             scheduled_end=datetime.time(9, 30),
         ),
@@ -269,7 +269,7 @@ def test_check_in_rules_and_token_generation(db_session: Session, setup_clinic_d
             patient_id=p2.id,
             doctor_id=doc.id,
             hospital_id=doc.hospital_id,
-            appointment_date=today,
+            appointment_date=test_date,
             scheduled_start=datetime.time(9, 30),
             scheduled_end=datetime.time(10, 0),
         ),
@@ -296,7 +296,7 @@ def test_queue_and_consultation_state_machine_enforcement(
 ):
     doc = setup_clinic_data["doctor"]
     p1 = setup_clinic_data["patient1"]
-    today = datetime.datetime.now(datetime.timezone.utc).date()
+    test_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=1)
 
     appt = appointment_service.book_appointment(
         db_session,
@@ -304,7 +304,7 @@ def test_queue_and_consultation_state_machine_enforcement(
             patient_id=p1.id,
             doctor_id=doc.id,
             hospital_id=doc.hospital_id,
-            appointment_date=today,
+            appointment_date=test_date,
             scheduled_start=datetime.time(10, 0),
             scheduled_end=datetime.time(10, 30),
         ),
@@ -351,7 +351,7 @@ def test_queue_ordering_and_patients_ahead_calculation(
     doc = setup_clinic_data["doctor"]
     p1 = setup_clinic_data["patient1"]
     p2 = setup_clinic_data["patient2"]
-    today = datetime.datetime.now(datetime.timezone.utc).date()
+    test_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=1)
 
     # Create and check in p1, then p2
     appt1 = appointment_service.book_appointment(
@@ -360,7 +360,7 @@ def test_queue_ordering_and_patients_ahead_calculation(
             patient_id=p1.id,
             doctor_id=doc.id,
             hospital_id=doc.hospital_id,
-            appointment_date=today,
+            appointment_date=test_date,
             scheduled_start=datetime.time(9, 0),
             scheduled_end=datetime.time(9, 30),
         ),
@@ -371,7 +371,7 @@ def test_queue_ordering_and_patients_ahead_calculation(
             patient_id=p2.id,
             doctor_id=doc.id,
             hospital_id=doc.hospital_id,
-            appointment_date=today,
+            appointment_date=test_date,
             scheduled_start=datetime.time(9, 30),
             scheduled_end=datetime.time(10, 0),
         ),
@@ -390,3 +390,79 @@ def test_queue_ordering_and_patients_ahead_calculation(
     assert status_p2.patients_ahead == 1
     assert status_p2.token_number == "A02"
     assert status_p2.wait_estimate.expected_minutes >= 15
+
+
+# ---------------------------------------------------------------------------
+# REGRESSION TESTS: Issue 2 (Past Slots & Timezone Boundaries)
+# ---------------------------------------------------------------------------
+
+def test_past_appointment_date_rejected(db_session: Session, setup_clinic_data: dict):
+    doc = setup_clinic_data["doctor"]
+    p1 = setup_clinic_data["patient1"]
+    past_date = datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=1)
+
+    with pytest.raises(InvalidStateTransitionError) as exc_info:
+        appointment_service.book_appointment(
+            db_session,
+            AppointmentCreate(
+                patient_id=p1.id,
+                doctor_id=doc.id,
+                hospital_id=doc.hospital_id,
+                appointment_date=past_date,
+                scheduled_start=datetime.time(9, 0),
+                scheduled_end=datetime.time(9, 30),
+            ),
+        )
+    assert exc_info.value.code == "PAST_APPOINTMENT_NOT_ALLOWED"
+
+
+def test_today_past_time_appointment_rejected(db_session: Session, setup_clinic_data: dict):
+    doc = setup_clinic_data["doctor"]
+    p1 = setup_clinic_data["patient1"]
+    today = datetime.datetime.now(datetime.timezone.utc).date()
+
+    # Slot from 00:00 to 00:30 UTC on today is definitely in the past if now > 00:30
+    now_time = datetime.datetime.now(datetime.timezone.utc).time()
+    if now_time.hour > 0:
+        with pytest.raises(InvalidStateTransitionError) as exc_info:
+            appointment_service.book_appointment(
+                db_session,
+                AppointmentCreate(
+                    patient_id=p1.id,
+                    doctor_id=doc.id,
+                    hospital_id=doc.hospital_id,
+                    appointment_date=today,
+                    scheduled_start=datetime.time(0, 0),
+                    scheduled_end=datetime.time(0, 30),
+                ),
+            )
+        assert exc_info.value.code == "PAST_APPOINTMENT_NOT_ALLOWED"
+
+
+def test_past_slots_excluded_from_doctor_availability(db_session: Session, setup_clinic_data: dict):
+    doc = setup_clinic_data["doctor"]
+    past_date = datetime.datetime.now(datetime.timezone.utc).date() - datetime.timedelta(days=2)
+
+    avail = appointment_service.get_doctor_availability(
+        db_session, doctor_id=doc.id, requested_date=past_date
+    )
+    # Exclude past slots: requesting a past date must yield zero available slots
+    assert len(avail.slots) == 0
+
+
+def test_doctor_availability_timezone_boundary(db_session: Session, setup_clinic_data: dict):
+    doc = setup_clinic_data["doctor"]
+    hospital = setup_clinic_data["hospital"]
+    # Change hospital timezone to Asia/Kolkata (+5:30)
+    hospital.timezone = "Asia/Kolkata"
+    db_session.add(hospital)
+    db_session.commit()
+
+    # A date strictly in the future for Kolkata
+    future_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=5)
+    avail = appointment_service.get_doctor_availability(
+        db_session, doctor_id=doc.id, requested_date=future_date, slot_duration_minutes=30
+    )
+    assert len(avail.slots) == 6
+    assert all(s.is_available for s in avail.slots)
+

@@ -111,6 +111,11 @@ export interface Appointment {
   reasonForVisit: string;
   triageUrgency?: TriageUrgency;
   queueToken?: string;
+  hospitalId?: string;
+  scheduledStart?: string;
+  scheduledEnd?: string;
+  appointmentDate?: string;
+  rawStatus?: string;
   createdAt: string;
 }
 
@@ -168,6 +173,19 @@ export interface Consultation {
   diagnosis: string;
   prescriptions: string[];
   followUpRecommendation?: string;
+  triageSessionId?: string;
+  intakeSummary?: {
+    chiefComplaint: string;
+    duration?: string;
+    severity?: number;
+    urgency?: string;
+    specialty?: string;
+    presentSymptoms?: string[];
+    absentSymptoms?: string[];
+    unknownSymptoms?: string[];
+    safetyScreenings?: Record<string, string>;
+    conversationSummary?: string;
+  };
 }
 
 export interface HealthArticle {

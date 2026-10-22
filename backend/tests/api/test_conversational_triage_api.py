@@ -29,6 +29,44 @@ def test_conversational_triage_turn_api(
         PatientCreate(profile_id=pat_prof.id, date_of_birth=datetime.date(1990, 8, 12)),
     )
 
+    from unittest.mock import patch
+    from app.services.llm.provider import (
+        AdaptiveQuestionProposal,
+        AdaptiveQuestionStatus,
+        EvidenceStatus,
+        ExtractedEvidenceItem,
+        ExtractedEvidenceResult,
+    )
+
+    class FakeOfflineProvider:
+        def extract_patient_evidence(self, message, context=None):
+            return ExtractedEvidenceResult(
+                chief_complaint="mild headache and fatigue",
+                duration="2 days",
+                severity=3,
+                items=[
+                    ExtractedEvidenceItem(evidence_code="E_91", status=EvidenceStatus.ABSENT),
+                ],
+            )
+
+        def propose_next_question(self, context):
+            return AdaptiveQuestionProposal(
+                status=AdaptiveQuestionStatus.ASK,
+                question="Is your headache sharp, dull, or throbbing?",
+                intent="Characterize pain quality",
+                target_information=["symptom_character_location"],
+                reason="Determine pain quality",
+            )
+
+        def phrase_question(self, controlled_question, evidence_id, context=None):
+            return controlled_question
+
+        def summarize_conversation(self, messages):
+            return "Patient reported headache for 2 days."
+
+        def close(self):
+            pass
+
     # 1. Start triage session
     res_create = client.post(
         "/api/v1/triage/sessions",
@@ -38,12 +76,14 @@ def test_conversational_triage_turn_api(
     assert res_create.status_code == 201
     session_id = res_create.json()["id"]
 
-    # 2. Send first message to conversational triage endpoint
-    res_msg1 = client.post(
-        f"/api/v1/triage/sessions/{session_id}/messages",
-        json={"content": "I have had a headache for 2 days, but no fever and no nausea."},
-        headers=patient_headers,
-    )
+    # 2. Send first message to conversational triage endpoint (with mocked offline provider)
+    with patch("app.services.triage.orchestrator.get_llm_provider", return_value=FakeOfflineProvider()), \
+         patch("app.services.triage.question_selector.get_llm_provider", return_value=FakeOfflineProvider()):
+        res_msg1 = client.post(
+            f"/api/v1/triage/sessions/{session_id}/messages",
+            json={"content": "I have had a headache for 2 days, but no fever and no nausea."},
+            headers=patient_headers,
+        )
     assert res_msg1.status_code == 200
     turn1 = res_msg1.json()
     assert turn1["session_id"] == session_id

@@ -72,7 +72,7 @@ class Doctor(Base, TimestampMixin):
     @property
     def supported_languages(self) -> List[str]:
         if not self.languages:
-            return ["en"]
+            return []
         return [l.strip().lower() for l in self.languages.split(",") if l.strip()]
 
     # Relationships

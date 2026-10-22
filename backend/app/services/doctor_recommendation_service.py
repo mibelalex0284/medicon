@@ -87,6 +87,7 @@ class DoctorRecommendationService:
         target_specialty_id = request.specialty_id
         is_emergency_escalation = False
         escalation_notice = None
+        triage_urgency = None
 
         if request.triage_session_id:
             session = triage_repo.get_session(db, request.triage_session_id)
@@ -119,17 +120,25 @@ class DoctorRecommendationService:
             if assessment.recommended_specialty_id:
                 target_specialty_id = assessment.recommended_specialty_id
 
-            # Emergency safety check: do not downgrade urgency
-            if (
-                assessment.needs_escalation
-                or assessment.urgency == TriageUrgency.HIGH
-                or assessment.red_flag_detected
-            ):
+            triage_urgency = assessment.urgency
+
+            # Emergency determination is distinct from urgency classification.
+            # True emergency is identified by red flags.
+            if assessment.red_flag_detected:
                 is_emergency_escalation = True
                 escalation_notice = (
-                    "EMERGENCY SAFETY NOTICE: Triage assessment indicated high clinical urgency or "
+                    "EMERGENCY SAFETY NOTICE: Triage assessment indicated critical warning signs or "
                     "red-flag emergency symptoms. Immediate emergency medical care is advised. "
                     "Outpatient doctor selection is not a substitute for emergency evaluation."
+                )
+            elif assessment.urgency == TriageUrgency.HIGH:
+                # High urgency without an emergency determination allows urgent consultation pathway.
+                is_emergency_escalation = False
+                escalation_notice = (
+                    "HIGH CLINICAL URGENCY: Your reported symptoms indicate elevated clinical urgency. "
+                    "Please schedule a prompt / urgent consultation with the recommended clinical specialty. "
+                    "Safety notice: Absence of red-flag symptoms does not guarantee safety. If your condition "
+                    "worsens suddenly, seek immediate emergency medical care."
                 )
 
         # Specialty is mandatory for recommendation
@@ -154,6 +163,22 @@ class DoctorRecommendationService:
             specialty_id=target_specialty_id,
             is_active=True,
         )
+
+        # Enforce clinical specialty consistency: a doctor whose primary clinical focus is
+        # in another specialty (e.g. primary Dermatology) must not be matched or presented
+        # as a specialist for an unrelated required specialty (e.g. General Medicine).
+        filtered_candidates = []
+        for doc in candidate_doctors:
+            doc_specs = doc.specialties or []
+            target_ds = next((ds for ds in doc_specs if ds.specialty_id == target_specialty_id), None)
+            if not target_ds:
+                continue
+            primary_ds = next((ds for ds in doc_specs if ds.is_primary), None)
+            if primary_ds and primary_ds.specialty_id != target_specialty_id:
+                # Doctor's primary focus is in another domain; exclude from this specialty
+                continue
+            filtered_candidates.append(doc)
+        candidate_doctors = filtered_candidates
 
         # Filter by consultation mode if requested
         if request.consultation_mode:
@@ -193,6 +218,7 @@ class DoctorRecommendationService:
                 total_eligible_doctors=0,
                 is_emergency_escalation=is_emergency_escalation,
                 escalation_notice=escalation_notice,
+                urgency=triage_urgency,
             )
 
         # 4. Stage B: Explainable Scoring & Ranking
@@ -221,6 +247,7 @@ class DoctorRecommendationService:
             total_eligible_doctors=len(candidate_doctors),
             is_emergency_escalation=is_emergency_escalation,
             escalation_notice=escalation_notice,
+            urgency=triage_urgency,
         )
 
 

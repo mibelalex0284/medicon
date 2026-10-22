@@ -1,6 +1,7 @@
 from datetime import date
 from typing import Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
+from app.models.triage_assessment import TriageUrgency
 from app.schemas.doctor import DoctorResponse
 
 
@@ -59,13 +60,13 @@ class RecommendationFactorBreakdown(BaseModel):
 
     average_rating: float
     rating_count: int
-    rating_reliability_score: float
+    rating_reliability_score: float = 0.0
 
     preference_match: bool
     preference_score: float
 
     language_match: bool
-    language_score: float
+    language_score: float = 0.0
 
     raw_weights: Dict[str, float] = {}
 
@@ -106,5 +107,6 @@ class DoctorRecommendationResponse(BaseModel):
     total_eligible_doctors: int
     is_emergency_escalation: bool = False
     escalation_notice: Optional[str] = None
+    urgency: Optional[TriageUrgency] = None
 
     model_config = ConfigDict(from_attributes=True)

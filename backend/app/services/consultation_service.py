@@ -52,6 +52,14 @@ class ConsultationService:
                 code="INVALID_QUEUE_TRANSITION",
             )
 
+        # Enforce that doctor cannot have multiple consultations IN_PROGRESS simultaneously
+        active_consultation = consultation_repo.get_active_by_doctor(db, doctor_id)
+        if active_consultation and active_consultation.queue_entry_id != queue_entry_id:
+            raise ConflictError(
+                message="Doctor already has an active consultation in progress. Complete it before starting a new one.",
+                code="DOCTOR_BUSY_WITH_ACTIVE_CONSULTATION",
+            )
+
         now = datetime.datetime.now(datetime.timezone.utc)
 
         # Check if consultation already exists
@@ -144,6 +152,29 @@ class ConsultationService:
         db.commit()
         db.refresh(consultation)
         db.refresh(entry)
+        return consultation
+
+    @staticmethod
+    def get_active_by_doctor(
+        db: Session, doctor_id: str
+    ) -> Optional[Consultation]:
+        return consultation_repo.get_active_by_doctor(db, doctor_id)
+
+    @staticmethod
+    def get_by_queue_entry(
+        db: Session, queue_entry_id: str, doctor_id: str
+    ) -> Consultation:
+        consultation = consultation_repo.get_by_queue_entry_id(db, queue_entry_id)
+        if not consultation:
+            raise NotFoundError(
+                message=f"No consultation found for queue entry '{queue_entry_id}'",
+                code="CONSULTATION_NOT_FOUND",
+            )
+        if consultation.doctor_id != doctor_id:
+            raise ForbiddenError(
+                message="Access forbidden: you cannot view another doctor's consultation",
+                code="NOT_ASSIGNED_DOCTOR",
+            )
         return consultation
 
 

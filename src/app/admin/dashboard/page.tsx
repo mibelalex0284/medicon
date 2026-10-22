@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { analyticsService } from "@/services/analytics";
 import { queueService } from "@/services/queue";
-import { ClinicAnalytics, DepartmentStats } from "@/types";
+import { ClinicAnalytics, DepartmentStats, QueueEntry } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,11 @@ import {
 export default function AdminDashboard() {
   const analytics: ClinicAnalytics = analyticsService.getClinicAnalytics();
   const departments: DepartmentStats[] = analyticsService.getDepartmentStats();
-  const queueEntries = queueService.getAllQueue();
+  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
+
+  useEffect(() => {
+    queueService.getAllQueue().then(setQueueEntries).catch(() => {});
+  }, []);
 
   const isOperatingNormally = analytics.urgentDelayRate < 5.0 && analytics.meanWaitMinutes < 30;
 
@@ -133,22 +137,24 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 bg-white">
-          <CardContent className="p-4 space-y-1">
-            <div className="flex items-center justify-between text-slate-500">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                Doctor Utilization
+        <Link href="/admin/doctors" className="block group">
+          <Card className="border-slate-200 bg-white group-hover:border-sky-300 group-hover:shadow-xs transition-all">
+            <CardContent className="p-4 space-y-1">
+              <div className="flex items-center justify-between text-slate-500">
+                <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 group-hover:text-sky-700">
+                  Doctor Directory
+                </span>
+                <TrendingUp size={16} className="text-teal-600" />
+              </div>
+              <p className="text-3xl font-black text-slate-900 tabular-nums">
+                {analytics.doctorUtilizationRate}%
+              </p>
+              <span className="text-[11px] text-sky-600 font-medium block">
+                Manage registered physicians →
               </span>
-              <TrendingUp size={16} className="text-teal-600" />
-            </div>
-            <p className="text-3xl font-black text-slate-900 tabular-nums">
-              {analytics.doctorUtilizationRate}%
-            </p>
-            <span className="text-[11px] text-slate-500 block">
-              12 physicians actively consulting
-            </span>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </Link>
       </div>
 
       {/* 3. DEPARTMENT QUEUE STATUS & BOTTLENECKS */}

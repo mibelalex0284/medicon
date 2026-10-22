@@ -24,5 +24,9 @@ class ConsultationResponse(ConsultationBase):
     duration_seconds: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    patient_name: Optional[str] = None
+    doctor_name: Optional[str] = None
+    token_number: Optional[str] = None
+    chief_complaint: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

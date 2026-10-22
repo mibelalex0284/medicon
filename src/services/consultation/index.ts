@@ -1,80 +1,142 @@
 import { Consultation } from "@/types";
+import { getAuthHeaders } from "@/services/doctors";
+import {
+  BackendConsultationResponse,
+  mapBackendConsultationToFrontend,
+  QueueApiError,
+} from "@/services/queue";
 
-let ACTIVE_CONSULTATION: Consultation | null = {
-  id: "c_901",
-  queueEntryId: "q_001",
-  patientId: "pat_801",
-  patientName: "Robert Vance",
-  doctorId: "doc_202",
-  doctorName: "Dr. Anita Menon, MD",
-  status: "active",
-  startTime: new Date(Date.now() - 1000 * 60 * 8).toISOString(), // 8 minutes ago
-  elapsedSeconds: 480,
-  expectedDurationRange: { min: 12, max: 18 },
-  clinicalNotes:
-    "Patient presenting for routine hypertension review. Current BP measured at 138/86 mmHg. Reports mild morning lightheadedness with current Lisinopril 20mg dose.",
-  diagnosis: "Essential hypertension, moderately controlled",
-  prescriptions: ["Amlodipine 5mg (Oral Daily)", "Electrolyte Panel Order"],
-  followUpRecommendation: "Return for clinic BP check in 6 weeks.",
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+let ACTIVE_LOCAL_NOTES: {
+  notes: string;
+  diagnosis: string;
+  prescriptions: string[];
+} = {
+  notes: "",
+  diagnosis: "",
+  prescriptions: [],
 };
 
+async function handleResponse<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    let errorMessage = `HTTP error ${res.status}`;
+    let errorCode: string | undefined = undefined;
+    let detail: unknown = undefined;
+
+    try {
+      const data = await res.json();
+      if (data?.error?.message) {
+        errorMessage = data.error.message;
+        errorCode = data.error.code;
+      } else if (data?.detail) {
+        detail = data.detail;
+        if (typeof data.detail === "string") {
+          errorMessage = data.detail;
+        } else if (Array.isArray(data.detail) && data.detail[0]?.msg) {
+          errorMessage = data.detail.map((d: { msg?: string }) => d.msg).join("; ");
+          errorCode = "VALIDATION_ERROR";
+        } else {
+          errorMessage = JSON.stringify(data.detail);
+        }
+      }
+    } catch {
+      // Non-JSON response
+    }
+
+    throw new QueueApiError(errorMessage, res.status, errorCode, detail);
+  }
+  return res.json() as Promise<T>;
+}
+
 export class ConsultationService {
-  getActiveConsultation(doctorId: string): Consultation | null {
-    return ACTIVE_CONSULTATION;
+  /**
+   * GET /api/v1/queues/active-consultation
+   * Retrieves the doctor's currently active consultation from backend.
+   */
+  async getActiveConsultation(_doctorId?: string): Promise<Consultation | null> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/queues/active-consultation`, {
+      method: "GET",
+      headers,
+    });
+
+    if (res.status === 404) {
+      return null;
+    }
+
+    const data = await handleResponse<BackendConsultationResponse | null>(res);
+    if (!data) return null;
+
+    const mapped = mapBackendConsultationToFrontend(data);
+    mapped.clinicalNotes = ACTIVE_LOCAL_NOTES.notes;
+    mapped.diagnosis = ACTIVE_LOCAL_NOTES.diagnosis;
+    mapped.prescriptions = [...ACTIVE_LOCAL_NOTES.prescriptions];
+    return mapped;
   }
 
-  startNewConsultation(
+  /**
+   * POST /api/v1/queues/{queue_entry_id}/start
+   * Authoritatively starts the consultation.
+   */
+  async startNewConsultation(
     queueEntryId: string,
-    patientId: string,
-    patientName: string,
-    doctorId: string,
-    doctorName: string
-  ): Consultation {
-    ACTIVE_CONSULTATION = {
-      id: `c_${Date.now()}`,
-      queueEntryId,
-      patientId,
-      patientName,
-      doctorId,
-      doctorName,
-      status: "active",
-      startTime: new Date().toISOString(),
-      elapsedSeconds: 0,
-      expectedDurationRange: { min: 12, max: 18 },
-      clinicalNotes: "",
-      diagnosis: "",
-      prescriptions: [],
-    };
-    return ACTIVE_CONSULTATION;
+    _patientId?: string,
+    _patientName?: string,
+    _doctorId?: string,
+    _doctorName?: string
+  ): Promise<Consultation> {
+    ACTIVE_LOCAL_NOTES = { notes: "", diagnosis: "", prescriptions: [] };
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/queues/${encodeURIComponent(queueEntryId)}/start`,
+      {
+        method: "POST",
+        headers,
+      }
+    );
+    const data = await handleResponse<BackendConsultationResponse>(res);
+    return mapBackendConsultationToFrontend(data);
   }
 
   updateNotes(notes: string): void {
-    if (ACTIVE_CONSULTATION) {
-      ACTIVE_CONSULTATION.clinicalNotes = notes;
-    }
+    ACTIVE_LOCAL_NOTES.notes = notes;
   }
 
   updateDiagnosis(diagnosis: string): void {
-    if (ACTIVE_CONSULTATION) {
-      ACTIVE_CONSULTATION.diagnosis = diagnosis;
-    }
+    ACTIVE_LOCAL_NOTES.diagnosis = diagnosis;
   }
 
   addPrescription(rx: string): void {
-    if (ACTIVE_CONSULTATION && rx.trim()) {
-      ACTIVE_CONSULTATION.prescriptions.push(rx.trim());
+    if (rx.trim()) {
+      ACTIVE_LOCAL_NOTES.prescriptions.push(rx.trim());
     }
   }
 
-  completeConsultation(): Consultation | null {
-    if (ACTIVE_CONSULTATION) {
-      ACTIVE_CONSULTATION.status = "completed";
-      ACTIVE_CONSULTATION.endTime = new Date().toISOString();
-      const completed = { ...ACTIVE_CONSULTATION };
-      ACTIVE_CONSULTATION = null;
-      return completed;
+  /**
+   * POST /api/v1/queues/{queue_entry_id}/complete
+   * Authoritatively completes the active consultation on backend.
+   */
+  async completeConsultation(queueEntryId?: string): Promise<Consultation | null> {
+    let targetEntryId = queueEntryId;
+    if (!targetEntryId) {
+      const active = await this.getActiveConsultation();
+      if (!active) return null;
+      targetEntryId = active.queueEntryId;
     }
-    return null;
+
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/queues/${encodeURIComponent(targetEntryId)}/complete`,
+      {
+        method: "POST",
+        headers,
+      }
+    );
+    const data = await handleResponse<BackendConsultationResponse>(res);
+    ACTIVE_LOCAL_NOTES = { notes: "", diagnosis: "", prescriptions: [] };
+    return mapBackendConsultationToFrontend(data);
   }
 }
 

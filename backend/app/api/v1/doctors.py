@@ -6,6 +6,7 @@ from app.core.dependencies import (
     AuthenticatedUser,
     get_current_user,
     require_admin,
+    require_doctor,
     verify_hospital_access,
 )
 from app.db.session import get_db
@@ -46,6 +47,32 @@ def list_doctors(
     )
 
 
+@router.get(
+    "/admin/list",
+    response_model=List[DoctorResponse],
+    summary="List Registered Doctors (Admin Only)",
+    description="Securely retrieves all registered doctor records for administration. Enforces admin role.",
+)
+def list_doctors_admin(
+    hospital_id: Optional[str] = Query(None, description="Filter by hospital ID"),
+    specialty_id: Optional[str] = Query(None, description="Filter by specialty ID"),
+    department_id: Optional[str] = Query(None, description="Filter by department ID"),
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+    admin_user: AuthenticatedUser = Depends(require_admin),
+) -> List[DoctorResponse]:
+    effective_hospital = hospital_id or admin_user.hospital_id
+    return doctor_service.list_doctors(
+        db,
+        hospital_id=effective_hospital,
+        specialty_id=specialty_id,
+        department_id=department_id,
+        skip=skip,
+        limit=limit,
+    )
+
+
 @router.post(
     "/recommend",
     response_model=DoctorRecommendationResponse,
@@ -71,6 +98,33 @@ def recommend_doctors(
         request=request,
         current_user=current_user,
     )
+
+
+@router.get(
+    "/me",
+    response_model=DoctorResponse,
+    summary="Get Current Doctor Profile",
+    description="Securely retrieves the doctor profile for the currently authenticated doctor user.",
+)
+def get_current_doctor(
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_doctor),
+) -> DoctorResponse:
+    from app.core.exceptions import ForbiddenError
+    from app.models.doctor import Doctor
+    from app.models.profile import Profile
+    doc = (
+        db.query(Doctor)
+        .join(Profile)
+        .filter(Profile.auth_user_id == current_user.id)
+        .first()
+    )
+    if not doc:
+        raise ForbiddenError(
+            message="No registered doctor record found for your user account",
+            code="DOCTOR_RECORD_NOT_FOUND",
+        )
+    return doc
 
 
 @router.get(

@@ -39,26 +39,19 @@ def build_explanation(
         matched_factors.append("moderate_wait")
         reasons.append(f"estimated wait of {breakdown.estimated_wait_minutes} mins")
 
-    # 4. Rating reliability factor
-    if breakdown.rating_count >= 5 and breakdown.average_rating >= 4.0:
-        matched_factors.append("reliable_rating")
-        reasons.append(f"consistent patient rating ({breakdown.average_rating:.1f}/5 across {breakdown.rating_count} reviews)")
-
-    # 5. Experience factor
+    # 4. Relevant experience factor
     if breakdown.years_of_experience >= 5:
         matched_factors.append("established_experience")
         reasons.append(f"{breakdown.years_of_experience} years clinical practice experience")
 
-    # 6. Patient preference factor
-    if breakdown.preference_match and breakdown.preference_score >= 0.90:
+    # 5. Patient preference factor (including explicit language preference if requested)
+    if breakdown.preference_match:
         matched_factors.append("patient_preference")
-        reasons.append("matches your explicit consultation preference")
-
-    # 7. Language factor
-    if breakdown.language_match and breakdown.language_score >= 0.90:
-        matched_factors.append("language_match")
-        lang_label = f" ({preferred_language})" if preferred_language else ""
-        reasons.append(f"supports your requested language{lang_label}")
+        if breakdown.language_match and preferred_language and preferred_language.strip():
+            matched_factors.append("language_match")
+            reasons.append(f"matches your explicit preferences (including language: {preferred_language})")
+        else:
+            reasons.append("matches your explicit consultation preference")
 
     if not reasons:
         explanation = f"Eligible operational match for {specialty_name} based on standard department routing."

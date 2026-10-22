@@ -6,10 +6,8 @@ from app.ranking.constants import (
     RANKING_WEIGHTS,
     WEIGHT_AVAILABILITY,
     WEIGHT_EXPERIENCE,
-    WEIGHT_LANGUAGE_MATCH,
     WEIGHT_PATIENT_PREFERENCE,
     WEIGHT_PREDICTED_WAIT,
-    WEIGHT_RATING_RELIABILITY,
     WEIGHT_SPECIALTY_MATCH,
 )
 from app.ranking.explanations import build_explanation
@@ -19,7 +17,6 @@ from app.ranking.normalization import (
     normalize_experience,
     normalize_language,
     normalize_preference,
-    normalize_rating_reliability,
     normalize_specialty,
     normalize_wait,
 )
@@ -55,7 +52,7 @@ class DeterministicDoctorRankingProvider(DoctorRankingProvider):
         scored_items = []
 
         for doc in eligible_doctors:
-            # 1. Specialty factor (doctor is already eligible)
+            # 1. Specialty factor (0.35) (doctor is already eligible)
             doc_spec = next(
                 (ds for ds in doc.specialties if ds.specialty_id == target_specialty_id),
                 None,
@@ -68,7 +65,7 @@ class DeterministicDoctorRankingProvider(DoctorRankingProvider):
             )
             spec_score = normalize_specialty(is_primary)
 
-            # 2. Availability factor (concrete slots via appointment service)
+            # 2. Availability factor (0.25) (concrete slots via appointment service)
             try:
                 avail_resp = appointment_service.get_doctor_availability(
                     db, doc.id, target_date
@@ -82,44 +79,49 @@ class DeterministicDoctorRankingProvider(DoctorRankingProvider):
 
             avail_score = normalize_availability(has_slots, slot_count)
 
-            # 3. Predicted wait factor (Stage 3 baseline queue estimation)
+            # 3. Predicted wait factor (0.20) (baseline queue estimation)
             estimated_wait = wait_provider.get_estimated_wait_minutes(
                 db, doc.id, target_date
             )
             wait_score = normalize_wait(estimated_wait)
 
-            # 4. Experience factor
+            # 4. Relevant experience factor (0.10)
             exp_score = normalize_experience(doc.years_of_experience)
 
-            # 5. Rating reliability factor (Bayesian shrinkage)
-            rating_score = normalize_rating_reliability(
-                doc.average_rating, doc.rating_count
-            )
-
-            # 6. Patient preference factor
+            # 5. Patient preference factor (0.10) (incorporates conditional language matching)
             pref_score = normalize_preference(
-                doc.id,
-                request.preferred_doctor_id,
-                doc.consultation_mode,
-                request.consultation_mode,
+                doctor_id=doc.id,
+                preferred_doctor_id=request.preferred_doctor_id,
+                doctor_mode=doc.consultation_mode,
+                preferred_mode=request.consultation_mode,
+                doctor_languages=doc.supported_languages,
+                preferred_language=request.preferred_language,
             )
-            pref_match = bool(pref_score >= 0.90)
-
-            # 7. Language match factor
-            lang_score = normalize_language(
-                doc.supported_languages, request.preferred_language
+            has_explicit_pref = bool(
+                request.preferred_doctor_id
+                or request.consultation_mode
+                or (request.preferred_language and request.preferred_language.strip())
             )
-            lang_match = bool(lang_score >= 0.90)
+            pref_match = bool(has_explicit_pref and pref_score >= 0.70)
 
-            # Composite weighted score [0.0, 1.0]
+            # Language match status (for auditability and transparency)
+            if request.preferred_language and request.preferred_language.strip():
+                req_lang = request.preferred_language.strip().lower()
+                doc_langs = [l.strip().lower() for l in (doc.supported_languages or []) if l.strip()]
+                lang_match = bool(req_lang in doc_langs)
+                lang_score = 1.0 if lang_match else 0.0
+            else:
+                lang_match = False
+                lang_score = 0.0
+
+            # Composite 5-factor weighted score [0.0, 1.0]
+            # score = specialty_fit * 0.35 + availability * 0.25 + wait * 0.20 + exp * 0.10 + pref * 0.10
             composite_score = (
                 WEIGHT_SPECIALTY_MATCH * spec_score
                 + WEIGHT_AVAILABILITY * avail_score
                 + WEIGHT_PREDICTED_WAIT * wait_score
                 + WEIGHT_EXPERIENCE * exp_score
-                + WEIGHT_RATING_RELIABILITY * rating_score
                 + WEIGHT_PATIENT_PREFERENCE * pref_score
-                + WEIGHT_LANGUAGE_MATCH * lang_score
             )
             composite_score = min(1.0, max(0.0, round(composite_score, 4)))
 
@@ -137,7 +139,7 @@ class DeterministicDoctorRankingProvider(DoctorRankingProvider):
                 experience_score=exp_score,
                 average_rating=doc.average_rating,
                 rating_count=doc.rating_count,
-                rating_reliability_score=rating_score,
+                rating_reliability_score=0.0,  # Rating reliability removed from ranking formula
                 preference_match=pref_match,
                 preference_score=pref_score,
                 language_match=lang_match,
@@ -156,7 +158,7 @@ class DeterministicDoctorRankingProvider(DoctorRankingProvider):
                     "score": composite_score,
                     "avail_score": avail_score,
                     "estimated_wait": estimated_wait,
-                    "rating_score": rating_score,
+                    "exp_score": exp_score,
                     "doctor_id": doc.id,
                     "consultation_mode": doc.consultation_mode,
                     "matched_factors": matched_factors,
@@ -169,14 +171,14 @@ class DeterministicDoctorRankingProvider(DoctorRankingProvider):
         # 1. Higher composite score
         # 2. Higher availability score
         # 3. Lower estimated wait minutes (-estimated_wait)
-        # 4. Higher rating reliability score
+        # 4. Higher experience score
         # 5. Stable doctor ID string comparison
         scored_items.sort(
             key=lambda x: (
                 x["score"],
                 x["avail_score"],
                 -x["estimated_wait"],
-                x["rating_score"],
+                x["exp_score"],
                 x["doctor_id"],
             ),
             reverse=True,

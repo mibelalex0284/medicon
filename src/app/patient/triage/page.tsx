@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   triageService,
+  TriageApiError,
   TriageAssessmentResponse,
   TriageMessageResponse,
 } from "@/services/triage";
@@ -14,7 +15,6 @@ import {
   Send,
   Bot,
   User,
-  AlertTriangle,
   CheckCircle2,
   ArrowRight,
   RotateCcw,
@@ -46,6 +46,9 @@ function TriageChatContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [failedMessage, setFailedMessage] = useState<string | null>(null);
+  const [isRetryableError, setIsRetryableError] = useState(false);
+  const [isQuotaExhausted, setIsQuotaExhausted] = useState(false);
   const [safetyAlert, setSafetyAlert] = useState<RedFlagAlert | null>(null);
   const [isCompleted, setIsCompleted] = useState(false);
   const [assessment, setAssessment] = useState<TriageAssessmentResponse | null>(
@@ -153,26 +156,39 @@ function TriageChatContent() {
     };
   }, [searchParams]);
 
-  const handleSendMessage = async (e?: React.FormEvent) => {
+  const handleSendMessage = async (e?: React.FormEvent, retryText?: string) => {
     if (e) e.preventDefault();
 
-    const textToSend = inputText.trim();
+    const isRetry = typeof retryText === "string";
+    const textToSend = (isRetry ? retryText : inputText).trim();
     if (!textToSend || isLoading || safetyAlert || isCompleted) return;
 
     setErrorMessage(null);
-    setInputText("");
+    setIsRetryableError(false);
 
-    // Append patient message to chat
-    const patientMsgId = `patient-${Date.now()}`;
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: patientMsgId,
-        sender: "patient",
-        content: textToSend,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
+    // Retain the message text for recovery before clearing input
+    setFailedMessage(textToSend);
+    if (!isRetry) {
+      setInputText("");
+    }
+
+    // Append patient message to chat only if not already displayed
+    setMessages((prev) => {
+      const lastMsg = prev[prev.length - 1];
+      if (lastMsg && lastMsg.sender === "patient" && lastMsg.content === textToSend) {
+        return prev;
+      }
+      const patientMsgId = `patient-${Date.now()}`;
+      return [
+        ...prev,
+        {
+          id: patientMsgId,
+          sender: "patient",
+          content: textToSend,
+          createdAt: new Date().toISOString(),
+        },
+      ];
+    });
 
     setIsLoading(true);
 
@@ -195,6 +211,9 @@ function TriageChatContent() {
 
       // 2. Process message through conversational triage endpoint
       const turn = await triageService.sendMessage(currentSessionId, textToSend);
+
+      // On successful turn, clear failedMessage since it was successfully processed
+      setFailedMessage(null);
 
       // 3. Render assistant response
       const assistantMsgId = `assistant-${Date.now()}`;
@@ -259,11 +278,53 @@ function TriageChatContent() {
         }
       }
     } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "An unexpected error occurred during triage processing.";
+      let message = "An unexpected error occurred during triage processing.";
+      let isTransient = false;
+      let isCapacityExhausted = false;
+
+      if (err instanceof TriageApiError) {
+        message = err.message;
+        const msgLower = message.toLowerCase();
+        isCapacityExhausted =
+          msgLower.includes("capacity is temporarily exhausted") ||
+          msgLower.includes("quota") ||
+          msgLower.includes("rate limit") ||
+          err.code === "TRIAGE_LLM_QUOTA_EXHAUSTED";
+
+        if (
+          !isCapacityExhausted &&
+          (err.status === 503 ||
+            err.status === 502 ||
+            err.status === 504 ||
+            err.status === 500 ||
+            err.code === "TRIAGE_LLM_SERVICE_UNAVAILABLE" ||
+            msgLower.includes("temporarily unavailable"))
+        ) {
+          isTransient = true;
+        }
+      } else if (err instanceof Error) {
+        message = err.message;
+        const msgLower = message.toLowerCase();
+        isCapacityExhausted =
+          msgLower.includes("capacity is temporarily exhausted") ||
+          msgLower.includes("quota") ||
+          msgLower.includes("rate limit");
+
+        if (
+          !isCapacityExhausted &&
+          (msgLower.includes("temporarily unavailable") ||
+            msgLower.includes("failed to fetch") ||
+            msgLower.includes("network") ||
+            msgLower.includes("timeout") ||
+            msgLower.includes("503"))
+        ) {
+          isTransient = true;
+        }
+      }
+
       setErrorMessage(message);
+      setIsRetryableError(isTransient && !isCapacityExhausted);
+      setIsQuotaExhausted(isCapacityExhausted);
     } finally {
       setIsLoading(false);
     }
@@ -287,6 +348,9 @@ function TriageChatContent() {
     setMessages([]);
     setInputText("");
     setErrorMessage(null);
+    setFailedMessage(null);
+    setIsRetryableError(false);
+    setIsQuotaExhausted(false);
     setSafetyAlert(null);
     setIsCompleted(false);
     setAssessment(null);
@@ -373,7 +437,15 @@ function TriageChatContent() {
                 <CheckCircle2 className="text-emerald-600" size={20} />
                 Clinical Intake Assessment Summary
               </CardTitle>
-              <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-300">
+              <span
+                className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded border ${
+                  assessment.urgency === "HIGH"
+                    ? "bg-amber-100 text-amber-900 border-amber-300"
+                    : assessment.urgency === "MODERATE"
+                    ? "bg-sky-100 text-sky-900 border-sky-300"
+                    : "bg-emerald-100 text-emerald-800 border-emerald-300"
+                }`}
+              >
                 Urgency: {assessment.urgency}
               </span>
             </div>
@@ -426,25 +498,73 @@ function TriageChatContent() {
       {errorMessage && (
         <div
           role="alert"
-          className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-rose-950 flex items-start gap-3 shadow-xs"
+          className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-rose-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in duration-150"
         >
-          <AlertCircle size={20} className="text-rose-600 shrink-0 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <h4 className="font-semibold text-sm text-rose-900">
-              {errorMessage.includes("temporarily unavailable")
-                ? "Service Temporarily Unavailable"
-                : "Communication Error"}
-            </h4>
-            <p className="text-xs md:text-sm text-rose-800">{errorMessage}</p>
+          <div className="flex items-start gap-3 flex-1">
+            <AlertCircle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="font-semibold text-sm text-rose-900">
+                {isQuotaExhausted
+                  ? "Triage Capacity Limit Reached"
+                  : isRetryableError
+                  ? "Service Temporarily Unavailable"
+                  : errorMessage.includes("temporarily unavailable")
+                  ? "Service Temporarily Unavailable"
+                  : "Communication Error"}
+              </h4>
+              <p className="text-xs md:text-sm text-rose-800">{errorMessage}</p>
+              {isQuotaExhausted ? (
+                <p className="text-xs text-rose-700 font-medium">
+                  Your intake history has been saved. Due to temporary AI capacity limits, repeated attempts right now are unlikely to succeed. You can proceed directly to choose a doctor or check back later.
+                </p>
+              ) : (
+                isRetryableError && failedMessage && (
+                  <p className="text-xs text-rose-700 font-medium">
+                    Your message has been preserved. You can retry safely without losing your session.
+                  </p>
+                )
+              )}
+            </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setErrorMessage(null)}
-            className="text-xs border-rose-200 bg-white hover:bg-rose-100 text-rose-900"
-          >
-            Dismiss
-          </Button>
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {isQuotaExhausted ? (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleProceedToDoctorMatching}
+                className="text-xs bg-sky-700 hover:bg-sky-800 text-white shadow-2xs flex items-center gap-1.5"
+              >
+                Find Available Doctors
+                <ArrowRight size={13} />
+              </Button>
+            ) : (
+              isRetryableError && failedMessage && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  disabled={isLoading}
+                  onClick={() => handleSendMessage(undefined, failedMessage)}
+                  className="text-xs bg-rose-600 hover:bg-rose-700 text-white shadow-2xs flex items-center gap-1.5"
+                >
+                  <RotateCcw size={13} className={isLoading ? "animate-spin" : ""} />
+                  Retry
+                </Button>
+              )
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isLoading}
+              onClick={() => {
+                setErrorMessage(null);
+                setIsRetryableError(false);
+                setIsQuotaExhausted(false);
+              }}
+              className="text-xs border-rose-200 bg-white hover:bg-rose-100 text-rose-900"
+            >
+              Dismiss
+            </Button>
+          </div>
         </div>
       )}
 

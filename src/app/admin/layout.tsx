@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 const ADMIN_NAV = [
   { label: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { label: "Department Queues", href: "/admin/queues", icon: Layers },
+  { label: "Physicians", href: "/admin/doctors", icon: Stethoscope },
   { label: "Appointments", href: "/admin/appointments", icon: Calendar },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { label: "Simulation Sandbox", href: "/admin/simulation", icon: Sliders },

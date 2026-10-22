@@ -26,12 +26,12 @@ export default function AdminAppointmentsPage() {
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    setAppointments(appointmentService.getAllAppointments());
+    appointmentService.getAllAppointments().then(setAppointments).catch(() => {});
   }, []);
 
-  const handleQuickCheckIn = (apt: Appointment) => {
+  const handleQuickCheckIn = async (apt: Appointment) => {
     // 1. Update appointment status
-    appointmentService.updateAppointmentStatus(apt.id, "checked_in");
+    await appointmentService.updateAppointmentStatus(apt.id, "checked_in");
     // 2. Add to live queue
     const urgency =
       apt.triageUrgency === "emergency"
@@ -50,14 +50,16 @@ export default function AdminAppointmentsPage() {
     );
 
     // Refresh state
-    setAppointments(appointmentService.getAllAppointments());
+    const refreshed = await appointmentService.getAllAppointments();
+    setAppointments(refreshed);
     setActionSuccessMessage(`Patient checked in & added to Dr. ${apt.doctorName}'s live queue!`);
     setTimeout(() => setActionSuccessMessage(null), 4000);
   };
 
-  const handleCancelAppointment = (id: string) => {
-    appointmentService.updateAppointmentStatus(id, "cancelled");
-    setAppointments(appointmentService.getAllAppointments());
+  const handleCancelAppointment = async (id: string) => {
+    await appointmentService.updateAppointmentStatus(id, "cancelled");
+    const refreshed = await appointmentService.getAllAppointments();
+    setAppointments(refreshed);
   };
 
   const filteredAppointments = appointments.filter((apt) => {

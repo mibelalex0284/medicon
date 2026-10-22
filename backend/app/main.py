@@ -1,9 +1,25 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import logger
+from app.services.llm import get_llm_provider, close_llm_provider
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Application Startup: Initialize application-lifetime LLM provider / connection pool
+    logger.info("Initializing CareRoute-X application resources...")
+    try:
+        get_llm_provider()
+    except Exception as exc:
+        logger.warning(f"Could not eagerly initialize Gemini client at startup: {exc}")
+    yield
+    # Application Shutdown: Cleanly release HTTP connection pools and client resources
+    logger.info("Closing CareRoute-X application resources...")
+    close_llm_provider()
 
 
 def create_application() -> FastAPI:
@@ -18,6 +34,7 @@ def create_application() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     # CORS Middleware

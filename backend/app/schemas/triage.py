@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 from app.models.triage_assessment import TriageUrgency
 from app.models.triage_question import QuestionResponseType
@@ -86,12 +86,6 @@ class TriageMessageResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CandidateConditionSummary(BaseModel):
-    condition: str
-    probability: float
-    severity: int = 1
-
-
 class SelectedQuestionSummary(BaseModel):
     evidence_id: str
     question_text: str
@@ -111,10 +105,35 @@ class TriageConversationalTurnResponse(BaseModel):
     assistant_message: str
     extracted_evidences: List[dict] = Field(default_factory=list)
     selected_question: Optional[SelectedQuestionSummary] = None
-    top_candidate_conditions: List[CandidateConditionSummary] = Field(default_factory=list)
-    uncertainty_score: float = 1.0
+    completeness_score: float = 0.0
+    uncertainty_score: float = 0.0
     safety_flags: List[str] = Field(default_factory=list)
     assessment: Optional[TriageAssessmentResponse] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PreConsultationReportResponse(BaseModel):
+    session_id: str
+    patient_id: str
+    assessed_at: Optional[datetime] = None
+    urgency: TriageUrgency
+    recommended_specialty_id: Optional[str] = None
+    recommended_specialty_name: Optional[str] = None
+    chief_complaint: str
+    symptom_duration: Optional[str] = None
+    patient_reported_severity: Optional[int] = None
+    present_symptoms: List[str] = Field(default_factory=list)
+    absent_symptoms: List[str] = Field(default_factory=list)
+    unknown_symptoms: List[str] = Field(default_factory=list)
+    safety_screenings: Dict[str, str] = Field(default_factory=dict)
+    conversation_summary: str = ""
+    notice: str = (
+        "This summary is based on patient-reported intake information. "
+        "It is not a diagnosis. Final clinical assessment and diagnostic decisions "
+        "remain the responsibility of the treating physician."
+    )
+    formatted_report: str = ""
 
     model_config = ConfigDict(from_attributes=True)
 

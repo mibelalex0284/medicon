@@ -78,10 +78,21 @@ class TriageAssessment(Base):
                 "Emergency warning signs were detected. Seek urgent medical attention "
                 "or proceed to the nearest emergency department immediately."
             )
+        if self.urgency == TriageUrgency.HIGH:
+            return (
+                "Based on your responses, prompt outpatient clinical evaluation is recommended. "
+                "Please schedule an urgent appointment with the appropriate clinical specialty. "
+                "Absence of red-flag symptoms does not guarantee safety; if your condition worsens, seek immediate emergency care."
+            )
         if self.needs_escalation or self.confidence < 0.60:
             return (
                 "Some clinical presentation factors remain uncertain. "
                 "In-person medical evaluation is advised to ensure safe care navigation."
+            )
+        if self.urgency == TriageUrgency.MODERATE:
+            return (
+                "Based on your responses, timely outpatient clinical evaluation is recommended. "
+                "Please schedule an appointment with the appropriate clinical specialty."
             )
         return (
             "Based on your responses, routine care navigation is recommended. "

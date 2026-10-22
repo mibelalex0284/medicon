@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.models.profile import UserRole
 from app.models.triage_assessment import TriageUrgency
-from app.models.triage_session import TriageSessionStatus
+from app.models.triage_session import TriageSession, TriageSessionStatus
 from app.ranking.constants import (
     RANKING_WEIGHTS,
     RATING_GLOBAL_PRIOR,
@@ -290,13 +290,14 @@ def rec_setup_data(db_session: Session):
 def test_ranking_weights_sum_to_one():
     total_weight = sum(RANKING_WEIGHTS.values())
     assert total_weight == pytest.approx(1.0, abs=1e-6)
-    assert RANKING_WEIGHTS["specialty_match"] == 0.30
-    assert RANKING_WEIGHTS["availability"] == 0.20
-    assert RANKING_WEIGHTS["predicted_wait"] == 0.15
+    assert len(RANKING_WEIGHTS) == 5
+    assert RANKING_WEIGHTS["specialty_match"] == 0.35
+    assert RANKING_WEIGHTS["availability"] == 0.25
+    assert RANKING_WEIGHTS["predicted_wait"] == 0.20
     assert RANKING_WEIGHTS["experience"] == 0.10
-    assert RANKING_WEIGHTS["rating_reliability"] == 0.10
     assert RANKING_WEIGHTS["patient_preference"] == 0.10
-    assert RANKING_WEIGHTS["language_match"] == 0.05
+    assert "rating_reliability" not in RANKING_WEIGHTS
+    assert "language_match" not in RANKING_WEIGHTS
 
 
 def test_experience_normalization():
@@ -321,13 +322,18 @@ def test_specialty_normalization():
 
 def test_preference_normalization():
     # Preferred doctor match
-    assert normalize_preference("doc-1", "doc-1", "both", None) == 1.0
-    assert normalize_preference("doc-1", "doc-2", "both", None) == 0.2
+    assert normalize_preference("doc-1", preferred_doctor_id="doc-1") == 1.0
+    assert normalize_preference("doc-1", preferred_doctor_id="doc-2") == 0.2
     # Preferred mode match
-    assert normalize_preference("doc-1", None, "both", "in_person") == 1.0
-    assert normalize_preference("doc-1", None, "teleconsultation", "in_person") == 0.5
+    assert normalize_preference("doc-1", preferred_mode="in_person", doctor_mode="both") == 1.0
+    assert normalize_preference("doc-1", preferred_mode="in_person", doctor_mode="teleconsultation") == 0.5
     # No preference specified (neutral)
-    assert normalize_preference("doc-1", None, "both", None) == 0.5
+    assert normalize_preference("doc-1") == 0.5
+    # Explicit language preference matching
+    assert normalize_preference("doc-1", preferred_language="es", doctor_languages=["en", "es"]) == 1.0
+    assert normalize_preference("doc-1", preferred_language="es", doctor_languages=["en"]) == 0.2
+    assert normalize_preference("doc-1", preferred_language="es", doctor_languages=[]) == 0.2  # Missing language not assumed
+    assert normalize_preference("doc-1", preferred_language=None, doctor_languages=["en"]) == 0.5  # Neutral if not requested
 
 
 def test_language_normalization():
@@ -495,8 +501,9 @@ def test_structured_explanation_integrity(db_session: Session, rec_setup_data):
 
     # Verify structured factors
     assert "specialty_primary" in top_rec.matched_factors
+    assert "patient_preference" in top_rec.matched_factors
     assert "language_match" in top_rec.matched_factors
-    assert "reliable_rating" in top_rec.matched_factors
+    assert "reliable_rating" not in top_rec.matched_factors
 
     # Verify explanation string contains truth and NO superlatives
     exp = top_rec.explanation.lower()
@@ -709,3 +716,407 @@ def test_api_recommend_unauthenticated_rejected(client: TestClient, rec_setup_da
     }
     res = client.post("/api/v1/doctors/recommend", json=payload)
     assert res.status_code == 401
+
+
+# ============================================================================
+# DETERMINISTIC COMPARISON SCENARIOS A THROUGH I (STEP 7)
+# ============================================================================
+
+
+def compute_old_7_factor_score(
+    spec_score: float,
+    avail_score: float,
+    wait_score: float,
+    exp_score: float,
+    rating_score: float,
+    pref_score: float,
+    lang_score: float,
+) -> float:
+    """Computes the legacy 7-factor score for exact deterministic comparison."""
+    score = (
+        0.30 * spec_score
+        + 0.20 * avail_score
+        + 0.15 * wait_score
+        + 0.10 * exp_score
+        + 0.10 * rating_score
+        + 0.10 * pref_score
+        + 0.05 * lang_score
+    )
+    return round(score, 4)
+
+
+def compute_new_5_factor_score(
+    spec_score: float,
+    avail_score: float,
+    wait_score: float,
+    exp_score: float,
+    pref_score: float,
+) -> float:
+    """Computes the 5-factor score."""
+    from app.ranking.constants import (
+        WEIGHT_SPECIALTY_MATCH,
+        WEIGHT_AVAILABILITY,
+        WEIGHT_PREDICTED_WAIT,
+        WEIGHT_EXPERIENCE,
+        WEIGHT_PATIENT_PREFERENCE,
+    )
+    score = (
+        WEIGHT_SPECIALTY_MATCH * spec_score
+        + WEIGHT_AVAILABILITY * avail_score
+        + WEIGHT_PREDICTED_WAIT * wait_score
+        + WEIGHT_EXPERIENCE * exp_score
+        + WEIGHT_PATIENT_PREFERENCE * pref_score
+    )
+    return round(score, 4)
+
+
+def test_scenario_a_equally_eligible_different_wait_times():
+    """Scenario A: Two equally eligible doctors with different waiting times."""
+    spec_score = 1.0
+    avail_score = 1.0
+    exp_score = 0.50
+    pref_score = 0.50
+
+    wait_score_1 = normalize_wait(15)  # 15 min wait
+    wait_score_2 = normalize_wait(65)  # 65 min wait
+
+    old_score_1 = compute_old_7_factor_score(spec_score, avail_score, wait_score_1, exp_score, 0.80, pref_score, 0.50)
+    old_score_2 = compute_old_7_factor_score(spec_score, avail_score, wait_score_2, exp_score, 0.80, pref_score, 0.50)
+
+    new_score_1 = compute_new_5_factor_score(spec_score, avail_score, wait_score_1, exp_score, pref_score)
+    new_score_2 = compute_new_5_factor_score(spec_score, avail_score, wait_score_2, exp_score, pref_score)
+
+    assert new_score_1 > new_score_2
+    assert old_score_1 > old_score_2
+    # Score difference is strictly higher in 5-factor model (0.20 wait weight vs 0.15)
+    assert round(new_score_1 - new_score_2, 4) > round(old_score_1 - old_score_2, 4)
+
+
+def test_scenario_b_excellent_ratings_versus_longer_wait():
+    """Scenario B: A doctor with excellent ratings but a longer wait."""
+    spec_score = 1.0
+    avail_score = 0.84
+    exp_score = 0.40
+
+    rating_b1 = normalize_rating_reliability(4.9, 100)
+    wait_b1 = normalize_wait(75)
+
+    rating_b2 = normalize_rating_reliability(3.5, 5)
+    wait_b2 = normalize_wait(10)
+
+    new_score_b1 = compute_new_5_factor_score(spec_score, avail_score, wait_b1, exp_score, 0.50)
+    new_score_b2 = compute_new_5_factor_score(spec_score, avail_score, wait_b2, exp_score, 0.50)
+
+    # Doctor B2 with shorter wait ranks higher in 5-factor model because ratings are excluded
+    assert new_score_b2 > new_score_b1
+    assert "rating_reliability" not in RANKING_WEIGHTS
+
+
+def test_scenario_c_extensive_experience_versus_limited_availability():
+    """Scenario C: A doctor with extensive relevant experience but limited availability."""
+    spec_score = 1.0
+    wait_score = 0.75
+    pref_score = 0.50
+
+    exp_c1 = normalize_experience(25)     # 25 yrs
+    avail_c1 = normalize_availability(False, 0)  # 0 slots (0.10)
+
+    exp_c2 = normalize_experience(3)      # 3 yrs
+    avail_c2 = normalize_availability(True, 5)   # 5 slots (1.00)
+
+    new_score_c1 = compute_new_5_factor_score(spec_score, avail_c1, wait_score, exp_c1, pref_score)
+    new_score_c2 = compute_new_5_factor_score(spec_score, avail_c2, wait_score, exp_c2, pref_score)
+
+    # Doctor C2 ranks higher because availability is 0.25 vs experience 0.10
+    assert new_score_c2 > new_score_c1
+
+
+def test_scenario_d_doctor_matches_explicit_preference():
+    """Scenario D: A doctor who matches the patient's explicit preference."""
+    pref_score_match = normalize_preference("doc-1", preferred_doctor_id="doc-1")
+    pref_score_mismatch = normalize_preference("doc-2", preferred_doctor_id="doc-1")
+
+    assert pref_score_match == 1.0
+    assert pref_score_mismatch == 0.2
+
+    score_match = compute_new_5_factor_score(1.0, 0.84, 0.75, 0.50, pref_score_match)
+    score_mismatch = compute_new_5_factor_score(1.0, 0.84, 0.75, 0.50, pref_score_mismatch)
+
+    assert score_match > score_mismatch
+
+
+def test_scenario_e_mandatory_specialty_filter_cannot_be_bypassed(db_session: Session, rec_setup_data):
+    """Scenario E: A doctor who lacks a mandatory specialty requirement."""
+    data = rec_setup_data
+    from app.core.dependencies import AuthenticatedUser
+
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=data["hosp_a"].id,
+    )
+
+    req = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        specialty_id=data["cardio"].id,
+    )
+
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+    rec_ids = [r.doctor_id for r in resp.recommendations]
+
+    assert data["doc5"].id not in rec_ids  # Derm doc excluded
+    assert data["doc1"].id in rec_ids      # Cardio doc included
+
+
+def test_scenario_f_doctor_unavailable_when_availability_required(db_session: Session, rec_setup_data):
+    """Scenario F: A doctor who is unavailable for a requested appointment."""
+    data = rec_setup_data
+    from app.core.dependencies import AuthenticatedUser
+
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=data["hosp_a"].id,
+    )
+
+    future_date = datetime.date(2027, 1, 1)
+    req_strict = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        specialty_id=data["cardio"].id,
+        appointment_date=future_date,
+        require_availability=True,
+    )
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req_strict, user)
+    assert resp.status == "NO_ELIGIBLE_DOCTORS"
+    assert len(resp.recommendations) == 0
+
+
+def test_scenario_g_patient_without_language_preference():
+    """Scenario G: A patient who has not specified a language preference."""
+    pref_score_1 = normalize_preference("doc-1", doctor_languages=["en", "es", "hi"], preferred_language=None)
+    pref_score_2 = normalize_preference("doc-2", doctor_languages=["en"], preferred_language=None)
+
+    assert pref_score_1 == 0.50
+    assert pref_score_2 == 0.50
+
+    score_1 = compute_new_5_factor_score(1.0, 1.0, 0.75, 0.50, pref_score_1)
+    score_2 = compute_new_5_factor_score(1.0, 1.0, 0.75, 0.50, pref_score_2)
+
+    assert score_1 == score_2
+
+
+def test_scenario_h_patient_specifies_language_verified_and_missing_data():
+    """Scenario H: A patient who specifies a language, with verified and missing doctor-language information."""
+    pref_h1 = normalize_preference("doc-1", doctor_languages=["en", "es"], preferred_language="es")
+    pref_h2 = normalize_preference("doc-2", doctor_languages=["en", "fr"], preferred_language="es")
+    pref_h3 = normalize_preference("doc-3", doctor_languages=[], preferred_language="es")
+
+    assert pref_h1 == 1.0
+    assert pref_h2 == 0.2
+    assert pref_h3 == 0.2
+
+    score_h1 = compute_new_5_factor_score(1.0, 1.0, 0.75, 0.50, pref_h1)
+    score_h2 = compute_new_5_factor_score(1.0, 1.0, 0.75, 0.50, pref_h2)
+    score_h3 = compute_new_5_factor_score(1.0, 1.0, 0.75, 0.50, pref_h3)
+
+    assert score_h1 > score_h2
+    assert score_h1 > score_h3
+    assert score_h2 == score_h3
+
+
+def test_scenario_i_emergency_escalation_preserved(db_session: Session, rec_setup_data):
+    """Scenario I: An emergency-escalated triage session."""
+    data = rec_setup_data
+    from app.core.dependencies import AuthenticatedUser
+
+    session = TriageSession(
+        patient_id=data["patient"].id,
+        original_input="Severe acute crushing chest pain",
+        confirmed_input="Severe acute crushing chest pain",
+        language="en",
+        status=TriageSessionStatus.ESCALATED,
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    assessment = TriageAssessment(
+        triage_session_id=session.id,
+        urgency=TriageUrgency.HIGH,
+        confidence=1.0,
+        needs_escalation=True,
+        red_flag_detected=True,
+        recommended_specialty_id=data["cardio"].id,
+        rationale="Cardiac red flag symptoms",
+    )
+    db_session.add(assessment)
+    db_session.commit()
+
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=data["hosp_a"].id,
+    )
+
+    req = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        triage_session_id=session.id,
+    )
+
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+    assert resp.status == "EMERGENCY_ESCALATION"
+    assert resp.is_emergency_escalation is True
+    assert "EMERGENCY SAFETY NOTICE" in resp.escalation_notice
+
+
+def test_high_urgency_without_emergency_allows_doctor_recommendation(db_session: Session, rec_setup_data):
+    """Regression Test 1: HIGH urgency with NO emergency determination allows doctor recommendations and booking."""
+    data = rec_setup_data
+    from app.core.dependencies import AuthenticatedUser
+
+    session = TriageSession(
+        patient_id=data["patient"].id,
+        original_input="Bilateral leg pain for three days, sharp, severity 5/10, no swelling, affecting activities",
+        confirmed_input="Bilateral leg pain for three days, sharp, severity 5/10, no swelling, affecting activities",
+        language="en",
+        status=TriageSessionStatus.COMPLETED,
+    )
+    db_session.add(session)
+    db_session.commit()
+    db_session.refresh(session)
+
+    assessment = TriageAssessment(
+        triage_session_id=session.id,
+        urgency=TriageUrgency.HIGH,
+        confidence=0.90,
+        needs_escalation=False,
+        red_flag_detected=False,
+        recommended_specialty_id=data["cardio"].id,
+        rationale="Elevated pain severity affecting daily activities without acute red flags",
+    )
+    db_session.add(assessment)
+    db_session.commit()
+
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=data["hosp_a"].id,
+    )
+
+    req = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        triage_session_id=session.id,
+    )
+
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+
+    # Must NOT be classified as emergency escalation
+    assert resp.is_emergency_escalation is False
+    assert resp.status == "SUCCESS"
+    assert resp.urgency == TriageUrgency.HIGH
+    assert resp.total_eligible_doctors > 0
+    assert len(resp.recommendations) > 0
+
+    # Notice provides high urgency clinical guidance without blocking
+    assert resp.escalation_notice is not None
+    assert "HIGH CLINICAL URGENCY" in resp.escalation_notice
+    assert "prompt / urgent consultation" in resp.escalation_notice
+    # Safeguard: note that absence of red flags does not guarantee safety
+    assert "Absence of red-flag symptoms does not guarantee safety" in resp.escalation_notice
+
+
+def test_guidance_coherence_across_urgency_tiers(db_session: Session, rec_setup_data):
+    """Regression Test 2: Clinical guidance is coherent with urgency classification and never contradicts it."""
+    data = rec_setup_data
+
+    # High Urgency (Non-emergency)
+    high_assessment = TriageAssessment(
+        triage_session_id="test-session-high",
+        urgency=TriageUrgency.HIGH,
+        confidence=0.85,
+        needs_escalation=False,
+        red_flag_detected=False,
+    )
+    assert "routine care navigation" not in high_assessment.guidance
+    assert "prompt outpatient clinical evaluation" in high_assessment.guidance
+    assert "does not guarantee safety" in high_assessment.guidance
+
+    # Moderate Urgency
+    mod_assessment = TriageAssessment(
+        triage_session_id="test-session-mod",
+        urgency=TriageUrgency.MODERATE,
+        confidence=0.85,
+        needs_escalation=False,
+        red_flag_detected=False,
+    )
+    assert "timely outpatient clinical evaluation" in mod_assessment.guidance
+
+    # Low Urgency
+    low_assessment = TriageAssessment(
+        triage_session_id="test-session-low",
+        urgency=TriageUrgency.LOW,
+        confidence=0.85,
+        needs_escalation=False,
+        red_flag_detected=False,
+    )
+    assert "routine care navigation" in low_assessment.guidance
+
+    # True Emergency
+    emerg_assessment = TriageAssessment(
+        triage_session_id="test-session-emerg",
+        urgency=TriageUrgency.HIGH,
+        confidence=1.0,
+        needs_escalation=True,
+        red_flag_detected=True,
+    )
+    assert "Emergency warning signs" in emerg_assessment.guidance
+
+
+def test_low_and_moderate_urgency_pathways(db_session: Session, rec_setup_data):
+    """Regression Test 3: LOW and MODERATE urgency sessions return normal recommendations."""
+    data = rec_setup_data
+    from app.core.dependencies import AuthenticatedUser
+
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=data["hosp_a"].id,
+    )
+
+    for urg in [TriageUrgency.LOW, TriageUrgency.MODERATE]:
+        session = TriageSession(
+            patient_id=data["patient"].id,
+            original_input=f"Sample symptoms for {urg.value}",
+            confirmed_input=f"Sample symptoms for {urg.value}",
+            language="en",
+            status=TriageSessionStatus.COMPLETED,
+        )
+        db_session.add(session)
+        db_session.commit()
+        db_session.refresh(session)
+
+        assessment = TriageAssessment(
+            triage_session_id=session.id,
+            urgency=urg,
+            confidence=0.90,
+            needs_escalation=False,
+            red_flag_detected=False,
+            recommended_specialty_id=data["cardio"].id,
+            rationale="Routine symptoms",
+        )
+        db_session.add(assessment)
+        db_session.commit()
+
+        req = DoctorRecommendationRequest(
+            hospital_id=data["hosp_a"].id,
+            triage_session_id=session.id,
+        )
+
+        resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+        assert resp.is_emergency_escalation is False
+        assert resp.status == "SUCCESS"
+        assert resp.urgency == urg
+        assert resp.total_eligible_doctors > 0
+        assert len(resp.recommendations) > 0
+
+

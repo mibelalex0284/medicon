@@ -1,10 +1,12 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
-from app.core.dependencies import AuthenticatedUser, require_patient
+from app.core.dependencies import AuthenticatedUser, get_current_user, require_patient
+from app.core.exceptions import ForbiddenError
 from app.db.session import get_db
 from app.repositories.triage_repository import triage_repo
 from app.schemas.triage import (
+    PreConsultationReportResponse,
     TriageAnswerCreate,
     TriageAnswerResponse,
     TriageAssessmentResponse,
@@ -185,4 +187,45 @@ def get_triage_messages(
     session = triage_service.get_session(db, session_id)
     triage_service._assert_patient_ownership(db, session, current_user.id)
     return triage_repo.get_session_messages(db, session_id)
+
+
+@router.get(
+    "/sessions/{session_id}/report",
+    response_model=PreConsultationReportResponse,
+    summary="Get Pre-Consultation Intake Report",
+    description="Retrieves the structured pre-consultation intake report for the physician or patient.",
+)
+def get_pre_consultation_report(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> PreConsultationReportResponse:
+    session = triage_service.get_session(db, session_id)
+    if current_user.is_patient:
+        triage_service._assert_patient_ownership(db, session, current_user.id)
+    elif current_user.is_doctor or current_user.is_admin:
+        patient = session.patient or patient_repo.get(db, session.patient_id)
+        patient_hospital_id = (
+            patient.profile.hospital_id
+            if (patient and patient.profile)
+            else None
+        )
+        user_hospital_id = current_user.hospital_id
+        if (
+            not patient_hospital_id
+            or not user_hospital_id
+            or str(patient_hospital_id) != str(user_hospital_id)
+        ):
+            raise ForbiddenError(
+                message="Access forbidden: user and patient must belong to the same hospital",
+                code="FORBIDDEN_REPORT_ACCESS",
+            )
+    else:
+        raise ForbiddenError(
+            message="Access forbidden to triage report",
+            code="FORBIDDEN_REPORT_ACCESS",
+        )
+    orchestrator = ConversationalTriageOrchestrator(db=db)
+    return orchestrator.get_pre_consultation_report(session_id)
+
 

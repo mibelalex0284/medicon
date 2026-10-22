@@ -33,6 +33,13 @@ class QueueEntryResponse(QueueEntryBase):
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    patient_name: Optional[str] = None
+    patient_gender: Optional[str] = None
+    patient_age: Optional[int] = None
+    doctor_name: Optional[str] = None
+    room_number: Optional[str] = None
+    department_name: Optional[str] = None
+    chief_complaint: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,3 +56,8 @@ class PatientQueueStatusResponse(BaseModel):
     consultation_started_at: Optional[datetime] = None
     patients_ahead: int
     wait_estimate: WaitEstimate
+    patient_name: Optional[str] = None
+    doctor_name: Optional[str] = None
+    room_number: Optional[str] = None
+    department_name: Optional[str] = None
+    chief_complaint: Optional[str] = None

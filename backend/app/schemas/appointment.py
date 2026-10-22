@@ -49,5 +49,9 @@ class AppointmentResponse(AppointmentBase):
     status: AppointmentStatus
     created_at: datetime
     updated_at: datetime
+    doctor_name: Optional[str] = None
+    doctor_specialty: Optional[str] = None
+    department_name: Optional[str] = None
+    queue_token: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

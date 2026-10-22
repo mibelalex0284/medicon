@@ -1,5 +1,6 @@
 import datetime
 from typing import List, Optional
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 from app.core.exceptions import (
     ConflictError,
@@ -20,6 +21,15 @@ from app.schemas.appointment import (
     AvailableSlot,
     DoctorAvailabilityResponse,
 )
+
+
+def get_hospital_timezone(hospital: Optional[object]) -> ZoneInfo:
+    if hospital and getattr(hospital, "timezone", None):
+        try:
+            return ZoneInfo(hospital.timezone)
+        except Exception:
+            pass
+    return ZoneInfo("UTC")
 
 
 class AppointmentService:
@@ -70,6 +80,21 @@ class AppointmentService:
                 code="DOCTOR_NOT_FOUND",
             )
 
+        hospital = hospital_repo.get(db, doctor.hospital_id) if doctor.hospital_id else None
+        hospital_tz = get_hospital_timezone(hospital)
+        now_dt = datetime.datetime.now(hospital_tz)
+        today_in_hospital = now_dt.date()
+
+        # If requested date is in the past, return empty slots
+        if requested_date < today_in_hospital:
+            return DoctorAvailabilityResponse(
+                doctor_id=doctor_id,
+                hospital_id=doctor.hospital_id,
+                appointment_date=requested_date,
+                slot_duration_minutes=slot_duration_minutes or 15,
+                slots=[],
+            )
+
         # 0 = Monday ... 6 = Sunday
         weekday = requested_date.weekday()
         schedules = doctor_schedule_repo.get_by_doctor_and_day(
@@ -105,6 +130,12 @@ class AppointmentService:
                 if slot_end_dt.date() > requested_date or slot_end > sched.end_time:
                     break
 
+                # Exclude past slots if the requested date is today and slot has already started
+                slot_start_dt = datetime.datetime.combine(requested_date, current_start, tzinfo=hospital_tz)
+                if requested_date == today_in_hospital and slot_start_dt <= now_dt:
+                    current_start = slot_end
+                    continue
+
                 # Check conflict with existing appointments:
                 # appt.scheduled_start < slot_end AND appt.scheduled_end > current_start
                 is_booked = any(
@@ -122,6 +153,7 @@ class AppointmentService:
 
                 # Move to next slot
                 current_start = slot_end
+
 
         return DoctorAvailabilityResponse(
             doctor_id=doctor_id,
@@ -162,6 +194,20 @@ class AppointmentService:
                 message="scheduled_end must be strictly later than scheduled_start",
                 code="INVALID_TIME_RANGE",
             )
+
+        # Timezone-aware validation: cannot book appointments in the past
+        hospital = hospital_repo.get(db, obj_in.hospital_id)
+        hospital_tz = get_hospital_timezone(hospital)
+        now_dt = datetime.datetime.now(hospital_tz)
+        appointment_start_dt = datetime.datetime.combine(
+            obj_in.appointment_date, obj_in.scheduled_start, tzinfo=hospital_tz
+        )
+        if appointment_start_dt <= now_dt:
+            raise InvalidStateTransitionError(
+                message="Cannot book an appointment for a past date or time.",
+                code="PAST_APPOINTMENT_NOT_ALLOWED",
+            )
+
 
         # 5. Validate doctor is scheduled on that day of week
         weekday = obj_in.appointment_date.weekday()
@@ -223,6 +269,21 @@ class AppointmentService:
             raise InvalidStateTransitionError(
                 message="Completed appointments cannot be cancelled",
                 code="CANNOT_CANCEL_COMPLETED",
+            )
+        if appt.status == AppointmentStatus.NO_SHOW:
+            raise InvalidStateTransitionError(
+                message="Appointments marked as no-show cannot be cancelled",
+                code="CANNOT_CANCEL_NO_SHOW",
+            )
+
+        # Active consultation check
+        if appt.queue_entry and appt.queue_entry.status in [
+            QueueStatus.IN_CONSULTATION,
+            QueueStatus.COMPLETED,
+        ]:
+            raise InvalidStateTransitionError(
+                message="Cannot cancel an appointment that is currently in consultation or completed",
+                code="CANNOT_CANCEL_ACTIVE_CONSULTATION",
             )
 
         # Authorization check: patient can only cancel their own appointment

@@ -87,3 +87,27 @@ class Consultation(Base, TimestampMixin):
     patient: Mapped["Patient"] = relationship("Patient")
     doctor: Mapped["Doctor"] = relationship("Doctor")
     hospital: Mapped["Hospital"] = relationship("Hospital")
+
+    @property
+    def patient_name(self) -> Optional[str]:
+        if self.patient and self.patient.profile:
+            return self.patient.profile.full_name
+        return None
+
+    @property
+    def doctor_name(self) -> Optional[str]:
+        if self.doctor and self.doctor.profile:
+            return self.doctor.profile.full_name
+        return None
+
+    @property
+    def token_number(self) -> Optional[str]:
+        if self.queue_entry:
+            return self.queue_entry.token_number
+        return None
+
+    @property
+    def chief_complaint(self) -> Optional[str]:
+        if self.appointment and self.appointment.reason:
+            return self.appointment.reason
+        return None

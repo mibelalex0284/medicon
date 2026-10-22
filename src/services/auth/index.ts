@@ -47,6 +47,18 @@ const MOCK_PATIENT_PROFILE: PatientProfile = {
 
 const AUTH_STORAGE_KEY = "careroute_user_session";
 
+const DEV_ROLE_TOKENS: Record<UserRole, string | undefined> = {
+  patient:
+    process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwYXRfMTAxIiwicm9sZSI6InBhdGllbnQiLCJhcHBfbWV0YWRhdGEiOnsicm9sZSI6InBhdGllbnQiLCJob3NwaXRhbF9pZCI6bnVsbH0sInVzZXJfbWV0YWRhdGEiOnsicm9sZSI6InBhdGllbnQiLCJob3NwaXRhbF9pZCI6bnVsbH0sImlhdCI6MTc5MDY1NTMzNywiZXhwIjoxODIyMTkxMzM3fQ.6UaZsRiqi82gF42VIyDXQ1Orc4ImluashU19Jy9sMwc",
+  doctor:
+    process.env.NEXT_PUBLIC_DEV_DOCTOR_AUTH_TOKEN ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJkb2NfMjAyIiwicm9sZSI6ImRvY3RvciIsImFwcF9tZXRhZGF0YSI6eyJyb2xlIjoiZG9jdG9yIiwiaG9zcGl0YWxfaWQiOiJlMTRlMTQzNS1hZWNkLTQ4MGEtYWQxNC1lYWFlZDY3NTYwYmMifSwidXNlcl9tZXRhZGF0YSI6eyJyb2xlIjoiZG9jdG9yIiwiaG9zcGl0YWxfaWQiOiJlMTRlMTQzNS1hZWNkLTQ4MGEtYWQxNC1lYWFlZDY3NTYwYmMifSwiaWF0IjoxNzkyNjcwNjQ0LCJleHAiOjE4MjQyMDY2NDQsImhvc3BpdGFsX2lkIjoiZTE0ZTE0MzUtYWVjZC00ODBhLWFkMTQtZWFhZWQ2NzU2MGJjIn0._4cNE_VGNDwp3MAEM4RotdzRgR7wt8b71lK4gePBy5o",
+  admin:
+    process.env.NEXT_PUBLIC_DEV_ADMIN_AUTH_TOKEN ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1fMzAzIiwicm9sZSI6ImFkbWluIiwiYXBwX21ldGFkYXRhIjp7InJvbGUiOiJhZG1pbiIsImhvc3BpdGFsX2lkIjoiZTE0ZTE0MzUtYWVjZC00ODBhLWFkMTQtZWFhZWQ2NzU2MGJjIn0sInVzZXJfbWV0YWRhdGEiOnsicm9sZSI6ImFkbWluIiwiaG9zcGl0YWxfaWQiOiJlMTRlMTQzNS1hZWNkLTQ4MGEtYWQxNC1lYWFlZDY3NTYwYmMifSwiaWF0IjoxNzkyNjcwNjQ1LCJleHAiOjE4MjQyMDY2NDUsImhvc3BpdGFsX2lkIjoiZTE0ZTE0MzUtYWVjZC00ODBhLWFkMTQtZWFhZWQ2NzU2MGJjIn0.rcvzrL6a7cXo2IqOr8DD2K82imnnsZMR1jrDkIBoMk0",
+};
+
 export class AuthService {
   private currentUser: User | null = null;
 
@@ -65,8 +77,11 @@ export class AuthService {
         localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(this.currentUser));
       }
 
-      if (!localStorage.getItem("careroute_auth_token") && process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN) {
-        localStorage.setItem("careroute_auth_token", process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN);
+      if (this.currentUser) {
+        const token = DEV_ROLE_TOKENS[this.currentUser.role];
+        if (token && !localStorage.getItem("careroute_auth_token")) {
+          localStorage.setItem("careroute_auth_token", token);
+        }
       }
     } else {
       this.currentUser = MOCK_USERS.patient;
@@ -92,6 +107,10 @@ export class AuthService {
     this.currentUser = user;
     if (typeof window !== "undefined") {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+      const token = DEV_ROLE_TOKENS[role];
+      if (token) {
+        localStorage.setItem("careroute_auth_token", token);
+      }
     }
     return user;
   }
@@ -100,6 +119,11 @@ export class AuthService {
     this.currentUser = null;
     if (typeof window !== "undefined") {
       localStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem("careroute_auth_token");
+      sessionStorage.removeItem("careroute_auth_token");
+      sessionStorage.removeItem("careroute_triage_session_id");
+      sessionStorage.removeItem("careroute_triage_specialty_id");
+      sessionStorage.removeItem("careroute_patient_concern");
     }
   }
 

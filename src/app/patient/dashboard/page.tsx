@@ -32,44 +32,40 @@ export default function PatientDashboard() {
     if (!user) return;
 
     // Load active queue
-    const queue = queueService.getPatientActiveQueue(user.id);
-    setActiveQueue(queue);
+    queueService
+      .getPatientActiveQueue(user.id)
+      .then((q) => setActiveQueue(q || undefined))
+      .catch(() => {});
 
     // Load upcoming appointment
-    const apt = appointmentService.getUpcomingAppointment(user.id);
-    setUpcomingApt(apt);
+    appointmentService
+      .getUpcomingAppointment(user.id)
+      .then((apt) => setUpcomingApt(apt))
+      .catch(() => {});
 
-    // Subscribe to live queue changes
-    const unsubscribe = queueService.subscribe((entries) => {
-      const current = entries.find(
-        (e) =>
-          e.patientId === user.id &&
-          ["waiting", "called", "in_consultation"].includes(e.status)
-      );
-      setActiveQueue(current);
+    // Subscribe to live queue changes using the patient-facing endpoint
+    const unsubscribe = queueService.subscribePatient((entry) => {
+      setActiveQueue(entry || undefined);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  const handleCheckIn = () => {
+  const handleCheckIn = async () => {
     if (!user || !upcomingApt) return;
     setIsCheckingIn(true);
-    setTimeout(() => {
+    try {
       // Transition appointment to checked_in and enter queue
-      appointmentService.updateAppointmentStatus(upcomingApt.id, "checked_in");
-      const entry = queueService.checkInPatient(
-        user.id,
-        user.name,
-        upcomingApt.doctorId,
-        upcomingApt.doctorName,
-        upcomingApt.reasonForVisit,
-        upcomingApt.triageUrgency === "urgent" ? "urgent" : "routine"
-      );
-      setActiveQueue(entry);
-      setUpcomingApt(appointmentService.getUpcomingAppointment(user.id));
+      await appointmentService.updateAppointmentStatus(upcomingApt.id, "checked_in");
+      const entry = await queueService.getPatientActiveQueue(user.id);
+      setActiveQueue(entry || undefined);
+      const refreshed = await appointmentService.getUpcomingAppointment(user.id);
+      setUpcomingApt(refreshed);
+    } catch {
+      // keep existing state on error
+    } finally {
       setIsCheckingIn(false);
-    }, 450);
+    }
   };
 
   return (

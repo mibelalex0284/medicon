@@ -7,22 +7,23 @@ No magic numbers should be scattered in scoring or ranking algorithms.
 from typing import Dict
 
 # Centralized Factor Weights (Sum = 1.00)
-WEIGHT_SPECIALTY_MATCH: float = 0.30
-WEIGHT_AVAILABILITY: float = 0.20
-WEIGHT_PREDICTED_WAIT: float = 0.15
+# Five-Factor Core Model: Specialty Fit, Availability, Predicted Wait, Relevant Experience, Patient Preferences
+WEIGHT_SPECIALTY_MATCH: float = 0.35
+WEIGHT_AVAILABILITY: float = 0.25
+WEIGHT_PREDICTED_WAIT: float = 0.20
 WEIGHT_EXPERIENCE: float = 0.10
-WEIGHT_RATING_RELIABILITY: float = 0.10
 WEIGHT_PATIENT_PREFERENCE: float = 0.10
-WEIGHT_LANGUAGE_MATCH: float = 0.05
+
+# Deprecated factor weights retained as 0.0 for backward compatibility
+WEIGHT_RATING_RELIABILITY: float = 0.0
+WEIGHT_LANGUAGE_MATCH: float = 0.0
 
 RANKING_WEIGHTS: Dict[str, float] = {
     "specialty_match": WEIGHT_SPECIALTY_MATCH,
     "availability": WEIGHT_AVAILABILITY,
     "predicted_wait": WEIGHT_PREDICTED_WAIT,
     "experience": WEIGHT_EXPERIENCE,
-    "rating_reliability": WEIGHT_RATING_RELIABILITY,
     "patient_preference": WEIGHT_PATIENT_PREFERENCE,
-    "language_match": WEIGHT_LANGUAGE_MATCH,
 }
 
 # Validation: ensure weights strictly sum to 1.00

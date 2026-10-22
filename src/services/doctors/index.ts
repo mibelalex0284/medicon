@@ -26,11 +26,11 @@ export interface RecommendationFactorBreakdown {
   experience_score: number;
   average_rating: number;
   rating_count: number;
-  rating_reliability_score: number;
+  rating_reliability_score?: number;
   preference_match: boolean;
   preference_score: number;
   language_match: boolean;
-  language_score: number;
+  language_score?: number;
   raw_weights?: Record<string, number>;
 }
 
@@ -97,6 +97,8 @@ export interface RecommendedDoctorProfile {
   specialties: DoctorSpecialtyResponse[];
 }
 
+export type DoctorResponse = RecommendedDoctorProfile;
+
 export interface DoctorRecommendationItem {
   doctor_id: string;
   rank: number;
@@ -119,12 +121,27 @@ export interface DoctorRecommendationResponse {
   total_eligible_doctors: number;
   is_emergency_escalation: boolean;
   escalation_notice?: string | null;
+  urgency?: "LOW" | "MODERATE" | "HIGH" | string | null;
+}
+
+export interface AvailableSlot {
+  start_time: string;
+  end_time: string;
+  is_available: boolean;
+}
+
+export interface DoctorAvailabilityResponse {
+  doctor_id: string;
+  hospital_id: string;
+  appointment_date: string;
+  slot_duration_minutes: number;
+  slots: AvailableSlot[];
 }
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -277,6 +294,57 @@ export class DoctorService {
       body: JSON.stringify(request),
     });
     return handleResponse<DoctorRecommendationResponse>(res);
+  }
+
+  /**
+   * GET /api/v1/doctors/{doctor_id}/availability
+   * Retrieves discrete available appointment slots for a doctor on a specific date.
+   */
+  async getDoctorAvailability(
+    doctorId: string,
+    appointmentDate: string,
+    slotDurationMinutes?: number
+  ): Promise<DoctorAvailabilityResponse> {
+    const headers = await getAuthHeaders();
+    const query = new URLSearchParams({ appointment_date: appointmentDate });
+    if (slotDurationMinutes) {
+      query.append("slot_duration_minutes", slotDurationMinutes.toString());
+    }
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/doctors/${encodeURIComponent(doctorId)}/availability?${query.toString()}`,
+      {
+        method: "GET",
+        headers,
+      }
+    );
+    return handleResponse<DoctorAvailabilityResponse>(res);
+  }
+
+  /**
+   * GET /api/v1/doctors/me
+   * Authoritatively retrieves the authenticated doctor profile.
+   */
+  async getCurrentDoctor(): Promise<DoctorResponse> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/doctors/me`, {
+      method: "GET",
+      headers,
+    });
+    return handleResponse<DoctorResponse>(res);
+  }
+
+  /**
+   * GET /api/v1/doctors/admin/list
+   * Authoritatively retrieves registered doctors for admin directory.
+   */
+  async listDoctorsAdmin(hospitalId?: string): Promise<DoctorResponse[]> {
+    const headers = await getAuthHeaders();
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    const res = await fetch(`${API_BASE_URL}/api/v1/doctors/admin/list${query}`, {
+      method: "GET",
+      headers,
+    });
+    return handleResponse<DoctorResponse[]>(res);
   }
 
   getAllDoctors(): Doctor[] {

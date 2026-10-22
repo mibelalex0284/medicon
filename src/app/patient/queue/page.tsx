@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { queueService } from "@/services/queue";
+import { queueService, QueueApiError } from "@/services/queue";
 import { QueueEntry } from "@/types";
 import { QueueToken } from "@/components/common/QueueToken";
 import { WaitEstimate } from "@/components/common/WaitEstimate";
@@ -20,53 +20,118 @@ import {
   WifiOff,
   Bell,
   Stethoscope,
-  Volume2,
-  RefreshCw,
+  RotateCcw,
+  Activity,
+  ArrowRight,
 } from "lucide-react";
 
-export default function PatientQueuePage() {
+function PatientQueueContent() {
   const { user } = useAuth();
   const [activeQueue, setActiveQueue] = useState<QueueEntry | undefined>(undefined);
-  const [allQueue, setAllQueue] = useState<QueueEntry[]>([]);
-  const [isRealtimeConnected, setIsRealtimeConnected] = useState(true);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [recentNotification, setRecentNotification] = useState<string | null>(null);
+  const prevQueueRef = React.useRef<QueueEntry | undefined>(undefined);
 
-  useEffect(() => {
-    if (!user) return;
+  const loadQueueStatus = useCallback(async (isPolling: boolean = false) => {
+    if (!isPolling) setIsLoading(true);
+    else setIsRefreshing(true);
+    setErrorMessage(null);
 
-    // Initial load
-    const current = queueService.getPatientActiveQueue(user.id);
-    setActiveQueue(current);
-    setAllQueue(queueService.getAllQueue());
-
-    // Subscribe to realtime state transitions
-    const unsubscribe = queueService.subscribe((entries) => {
-      setAllQueue(entries);
-      const userEntry = entries.find(
-        (e) =>
-          e.patientId === user.id &&
-          ["waiting", "called", "in_consultation"].includes(e.status)
-      );
-
-      if (userEntry) {
-        if (userEntry.status === "called") {
-          setRecentNotification("⚠️ Room 204: Your token was just called! Please enter.");
-        } else if (activeQueue && userEntry.positionAhead !== activeQueue.positionAhead) {
-          setRecentNotification("Your queue position and estimated wait were updated.");
+    try {
+      const entry = await queueService.getPatientActiveQueue();
+      if (entry) {
+        const prev = prevQueueRef.current;
+        if (entry.status === "called" && prev?.status !== "called") {
+          setRecentNotification("⚠️ Room 204: Your token was just called! Please proceed into the consultation room.");
+        } else if (prev && entry.positionAhead !== prev.positionAhead) {
+          setRecentNotification(`Your queue position updated: ${entry.positionAhead} patient(s) ahead of you.`);
         }
-        setActiveQueue(userEntry);
+        prevQueueRef.current = entry;
+        setActiveQueue(entry);
       } else {
+        prevQueueRef.current = undefined;
         setActiveQueue(undefined);
       }
-    });
+    } catch (err: unknown) {
+      if (err instanceof QueueApiError) {
+        if (err.status === 401 || err.status === 403) {
+          setErrorMessage("Authentication session expired. Please sign in again.");
+        } else {
+          setErrorMessage(err.message);
+        }
+      } else if (err instanceof Error) {
+        setErrorMessage(err.message);
+      } else {
+        setErrorMessage("Could not connect to live queue. Please check your network connection.");
+      }
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
 
-    return () => unsubscribe();
-  }, [user]);
+  useEffect(() => {
+    loadQueueStatus();
 
-  // Simulated toggle of connection status to showcase Section 33 requirements
-  const toggleConnection = () => {
-    setIsRealtimeConnected((prev) => !prev);
-  };
+    // Controlled polite polling every 10 seconds while tab is active
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        loadQueueStatus(true);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [loadQueueStatus]);
+
+  if (isLoading) {
+    return (
+      <div className="max-w-xl mx-auto space-y-4 pt-12 text-center">
+        <Activity size={28} className="animate-spin text-sky-600 mx-auto" />
+        <h2 className="text-base font-bold text-slate-800">
+          Syncing with Outpatient Queue...
+        </h2>
+        <p className="text-xs text-slate-500">
+          Retrieving live status and waiting time estimates.
+        </p>
+      </div>
+    );
+  }
+
+  if (errorMessage) {
+    return (
+      <div className="max-w-xl mx-auto space-y-4 pt-6">
+        <div className="p-6 rounded-2xl bg-white border border-rose-200 shadow-xs space-y-3">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-sm font-bold text-rose-900">
+                Queue Sync Unavailable
+              </h3>
+              <p className="text-xs text-rose-700 mt-0.5">{errorMessage}</p>
+            </div>
+          </div>
+          <div className="pt-2 flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => loadQueueStatus(false)}
+              className="gap-2 text-xs"
+            >
+              <RotateCcw size={14} />
+              Retry Connection
+            </Button>
+            <Link href="/patient/appointments">
+              <Button size="sm" variant="ghost" className="text-xs text-slate-600">
+                View Appointments
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!activeQueue) {
     return (
@@ -100,31 +165,26 @@ export default function PatientQueuePage() {
       {/* Realtime Connectivity Status Banner */}
       <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-100/90 border border-slate-200 text-xs">
         <div className="flex items-center gap-2">
-          {isRealtimeConnected ? (
-            <>
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
-              </span>
-              <span className="text-slate-700 font-medium flex items-center gap-1.5">
-                <Wifi size={13} className="text-emerald-600" />
-                Live Realtime Sync Active
-              </span>
-            </>
-          ) : (
-            <>
-              <WifiOff size={14} className="text-amber-600" />
-              <span className="text-amber-800 font-medium">
-                Connection paused — Displaying last synced state
-              </span>
-            </>
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-600"></span>
+          </span>
+          <span className="text-slate-700 font-medium flex items-center gap-1.5">
+            <Wifi size={13} className="text-emerald-600" />
+            Live Clinic Sync Active
+          </span>
+          {isRefreshing && (
+            <span className="text-[10px] text-slate-400 font-mono animate-pulse">
+              (refreshing...)
+            </span>
           )}
         </div>
         <button
-          onClick={toggleConnection}
-          className="text-[11px] text-slate-500 hover:text-slate-800 underline"
+          onClick={() => loadQueueStatus(true)}
+          className="text-[11px] text-sky-700 hover:text-sky-900 font-medium flex items-center gap-1"
         >
-          {isRealtimeConnected ? "Simulate Offline" : "Reconnect"}
+          <RotateCcw size={12} />
+          Refresh Now
         </button>
       </div>
 
@@ -145,11 +205,11 @@ export default function PatientQueuePage() {
       )}
 
       {/* SIGNATURE TOKEN HERO CARD */}
-      <Card className="border-2 border-sky-500 bg-linear-to-b from-sky-50/50 to-white shadow-lg overflow-hidden">
+      <Card className="border-2 border-sky-500 bg-gradient-to-b from-sky-50/50 to-white shadow-lg overflow-hidden">
         <div className="bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-widest text-sky-400 flex items-center gap-1.5">
             <Clock size={14} />
-            Live Queue Station
+            Live Outpatient Queue
           </span>
           <QueueStatusBadge status={activeQueue.status} />
         </div>
@@ -158,7 +218,7 @@ export default function PatientQueuePage() {
           {/* Main Token Display */}
           <div className="flex flex-col items-center justify-center text-center space-y-2 py-2">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Your Queue Token
+              Your Assigned Token
             </span>
             <QueueToken
               token={activeQueue.token}
@@ -166,7 +226,7 @@ export default function PatientQueuePage() {
               size="hero"
             />
             <p className="text-sm font-semibold text-slate-700 pt-1">
-              {activeQueue.patientName} (You)
+              {user?.name || "Patient"}
             </p>
           </div>
 
@@ -175,7 +235,7 @@ export default function PatientQueuePage() {
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-center space-y-1">
               <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center justify-center gap-1">
                 <Users size={14} className="text-slate-400" />
-                People Ahead
+                Patients Ahead
               </span>
               <p className="text-3xl font-black text-slate-900 tabular-nums">
                 {activeQueue.positionAhead}
@@ -201,7 +261,7 @@ export default function PatientQueuePage() {
                 showIcon={false}
               />
               <span className="text-[11px] text-slate-500">
-                Uncertainty-aware range
+                Authoritative estimate
               </span>
             </div>
           </div>
@@ -231,7 +291,7 @@ export default function PatientQueuePage() {
             </div>
           </div>
 
-          {/* What to do right now */}
+          {/* Clinical Guidance / Instructions */}
           <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-900 space-y-1">
             <span className="font-bold flex items-center gap-1.5 text-amber-950">
               <AlertCircle size={15} />
@@ -239,61 +299,31 @@ export default function PatientQueuePage() {
             </span>
             <p className="leading-relaxed">
               {activeQueue.status === "called"
-                ? "Your token has been called! Please proceed immediately into Room 204. Your physician is expecting you."
+                ? "Your token has been called! Please proceed immediately into the consultation room. Your physician is ready for you."
+                : activeQueue.status === "in_consultation"
+                ? "Your consultation is currently in progress."
                 : activeQueue.positionAhead <= 1
-                ? "Please remain seated in the Waiting Lounge right outside Room 204. You are next to be called."
-                : "You may visit the clinic pharmacy or rest in the main atrium. Your queue position will update live on this screen."}
+                ? "Please remain seated in the waiting lounge right outside your room. You are next to be called."
+                : "Please stay near the outpatient waiting area. Your queue position and estimated wait will update live."}
             </p>
           </div>
         </CardContent>
       </Card>
-
-      {/* LIVE CLINIC QUEUE PROGRESSION (Visual Order) */}
-      <div className="space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-          Clinic Queue Stream ({allQueue.length} Active)
-        </h3>
-        <div className="space-y-2">
-          {allQueue.map((entry) => {
-            const isMe = entry.patientId === user?.id;
-            return (
-              <div
-                key={entry.id}
-                className={`p-3.5 rounded-xl border transition-all flex items-center justify-between text-xs ${
-                  isMe
-                    ? "bg-sky-50 border-sky-300 ring-2 ring-sky-200 font-medium"
-                    : "bg-white border-slate-200 text-slate-600"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <QueueToken
-                    token={entry.token}
-                    status={entry.status}
-                    size="sm"
-                  />
-                  <div>
-                    <span className="font-semibold text-slate-900 block">
-                      {isMe ? `${entry.patientName} (You)` : `Patient ${entry.token}`}
-                    </span>
-                    <span className="text-[11px] text-slate-500">
-                      {entry.chiefComplaint}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <WaitEstimate
-                    min={entry.estimatedWaitMinutes.min}
-                    max={entry.estimatedWaitMinutes.max}
-                    size="sm"
-                  />
-                  <QueueStatusBadge status={entry.status} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     </div>
+  );
+}
+
+export default function PatientQueuePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="max-w-xl mx-auto p-12 text-center space-y-3">
+          <Activity size={24} className="animate-spin text-sky-600 mx-auto" />
+          <p className="text-xs text-slate-500">Loading queue...</p>
+        </div>
+      }
+    >
+      <PatientQueueContent />
+    </Suspense>
   );
 }

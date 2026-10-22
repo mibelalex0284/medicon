@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { appointmentService } from "@/services/appointments";
 import { Appointment } from "@/types";
 import { AppointmentStatusBadge } from "@/components/common/StatusBadge";
@@ -9,8 +9,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Calendar, Clock, MapPin, Search } from "lucide-react";
 
 export default function DoctorAppointmentsPage() {
-  const allAppointments = appointmentService.getAllAppointments();
+  const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
   const [filter, setFilter] = useState("all");
+
+  useEffect(() => {
+    appointmentService
+      .getAllAppointments()
+      .then((data) => setAllAppointments(data))
+      .catch(() => {});
+  }, []);
 
   const filtered = allAppointments.filter((a) => {
     if (filter === "scheduled") return a.status === "scheduled";

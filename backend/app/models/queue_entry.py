@@ -92,3 +92,49 @@ class QueueEntry(Base, TimestampMixin):
     consultation: Mapped[Optional["Consultation"]] = relationship(
         "Consultation", back_populates="queue_entry", uselist=False
     )
+
+    @property
+    def patient_name(self) -> Optional[str]:
+        if self.patient and self.patient.profile:
+            return self.patient.profile.full_name
+        return None
+
+    @property
+    def patient_gender(self) -> Optional[str]:
+        if self.patient:
+            return self.patient.gender
+        return None
+
+    @property
+    def patient_age(self) -> Optional[int]:
+        if self.patient and self.patient.date_of_birth:
+            today = datetime.date.today()
+            dob = self.patient.date_of_birth
+            return today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        return None
+
+    @property
+    def doctor_name(self) -> Optional[str]:
+        if self.doctor and self.doctor.profile:
+            return self.doctor.profile.full_name
+        return None
+
+    @property
+    def room_number(self) -> Optional[str]:
+        if self.doctor:
+            return getattr(self.doctor, "room_number", None)
+        return None
+
+    @property
+    def department_name(self) -> Optional[str]:
+        if self.doctor and self.doctor.department:
+            return self.doctor.department.name
+        elif self.hospital:
+            return self.hospital.name
+        return None
+
+    @property
+    def chief_complaint(self) -> Optional[str]:
+        if self.appointment and self.appointment.reason:
+            return self.appointment.reason
+        return None

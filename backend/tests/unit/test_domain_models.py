@@ -237,3 +237,33 @@ def test_valid_patient_and_invalid_role_mapping(db_session: Session):
             ),
         )
     assert exc_info.value.code == "INVALID_PROFILE_ROLE"
+
+
+def test_symptom_observation_requires_status():
+    from app.schemas.patient_state import SymptomObservation, PatientState
+    from app.services.llm.provider import EvidenceStatus
+
+    # Constructing without status must fail with ValidationError
+    with pytest.raises(ValidationError):
+        SymptomObservation(code="E_50")
+
+    # Constructing with explicit status and source_message_id succeeds
+    obs = SymptomObservation(
+        code="E_50",
+        status=EvidenceStatus.PRESENT,
+        source_message_id="msg-123",
+    )
+    assert obs.code == "E_50"
+    assert obs.status == EvidenceStatus.PRESENT
+    assert obs.source_message_id == "msg-123"
+
+    # PatientState mark methods preserve source_message_id
+    state = PatientState(session_id="s-1", patient_id="p-1")
+    state.mark_present("E_50", source_message_id="msg-456")
+    assert state.observations["E_50"].status == EvidenceStatus.PRESENT
+    assert state.observations["E_50"].source_message_id == "msg-456"
+
+    state.mark_absent("E_91", source_message_id="msg-789")
+    assert state.observations["E_91"].status == EvidenceStatus.ABSENT
+    assert state.observations["E_91"].source_message_id == "msg-789"
+

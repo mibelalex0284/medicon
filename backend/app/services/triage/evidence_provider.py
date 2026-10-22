@@ -1,6 +1,5 @@
 import json
 import os
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 import zipfile
 
@@ -8,10 +7,42 @@ from app.core.config import settings
 from app.core.logging import logger
 
 
-class DDXPlusEvidenceProvider:
-    """Provides high-performance, in-memory access to the DDXPlus clinical evidence
+# Validated definitions for supported adaptive intake questions
+ADAPTIVE_EVIDENCE_REGISTRY: Dict[str, Dict[str, Any]] = {
+    "adaptive_functional_impact": {
+        "name": "Functional Impact on Daily Activities or Sleep",
+        "question_en": "Is this condition significantly interfering with your daily activities or sleep?",
+        "data_type": "B",
+        "possible-values": [True, False, "Yes", "No"],
+        "category": "FUNCTIONAL_IMPACT",
+        "is_antecedent": False,
+        "allow_affirmative": True,
+        "allow_negative": True,
+        "state_field": "functional_impact",
+        "affirmative_value": "Significant interference with daily activities or sleep",
+        "negative_value": "No significant functional impact reported",
+    },
+    "adaptive_associated_symptoms_and_pertinent_negatives": {
+        "name": "Associated Symptoms and Pertinent Negatives",
+        "question_en": "Are you experiencing any other accompanying symptoms?",
+        "data_type": "B",
+        "possible-values": [True, False, "Yes", "No"],
+        "category": "ASSOCIATED_SYMPTOM",
+        "is_antecedent": False,
+        "allow_affirmative": False,  # Unsafe: "yes" alone does not specify which symptoms are present
+        "allow_negative": True,      # "no" safely confirms absence of additional symptoms
+        "state_field": "associated_symptoms",
+        "affirmative_value": None,
+        "negative_value": False,
+    },
+}
 
-    and condition ontologies. Caches parsed structures on initial load.
+
+class DDXPlusEvidenceProvider:
+    """Provides high-performance, in-memory access to the clinical evidence and symptom ontology.
+
+    Maintains controlled evidence questions, possible values, and parent/child question dependencies.
+    Does NOT load, cache, or predict disease conditions.
     """
 
     _instance: Optional["DDXPlusEvidenceProvider"] = None
@@ -19,8 +50,6 @@ class DDXPlusEvidenceProvider:
     def __init__(self, data_path: Optional[str] = None):
         self.data_path = data_path or settings.DDXPLUS_DATA_PATH
         self._evidences: Dict[str, Dict[str, Any]] = {}
-        self._conditions: Dict[str, Dict[str, Any]] = {}
-        self._evidence_to_conditions: Dict[str, Set[str]] = {}
         self._parent_evidences: Dict[str, str] = {}
         self._child_evidences: Dict[str, Set[str]] = {}
         self._loaded: bool = False
@@ -45,7 +74,7 @@ class DDXPlusEvidenceProvider:
 
         if not loaded_path:
             logger.warning(
-                f"DDXPlus ontology file not found at '{self.data_path}' or candidate locations. "
+                f"Clinical evidence ontology file not found at '{self.data_path}' or candidate locations. "
                 "Evidence provider initialized in empty mode."
             )
             return
@@ -56,32 +85,11 @@ class DDXPlusEvidenceProvider:
                     if "release_evidences.json" in z.namelist():
                         ev_bytes = z.read("release_evidences.json")
                         self._evidences = json.loads(ev_bytes.decode("utf-8"))
-                    if "release_conditions.json" in z.namelist():
-                        cond_bytes = z.read("release_conditions.json")
-                        self._conditions = json.loads(cond_bytes.decode("utf-8"))
             elif os.path.isdir(loaded_path):
                 ev_file = os.path.join(loaded_path, "release_evidences.json")
-                cond_file = os.path.join(loaded_path, "release_conditions.json")
                 if os.path.exists(ev_file):
                     with open(ev_file, "r", encoding="utf-8") as f:
                         self._evidences = json.load(f)
-                if os.path.exists(cond_file):
-                    with open(cond_file, "r", encoding="utf-8") as f:
-                        self._conditions = json.load(f)
-
-            # Build reverse index: evidence_id -> set of condition names
-            for cond_name, cond_info in self._conditions.items():
-                symptoms = cond_info.get("symptoms", {})
-                for ev_key in symptoms.keys():
-                    base_ev = ev_key.split("_@_")[0]
-                    self._evidence_to_conditions.setdefault(base_ev, set()).add(cond_name)
-                    self._evidence_to_conditions.setdefault(ev_key, set()).add(cond_name)
-
-                antecedents = cond_info.get("antecedents", {})
-                for ant_key in antecedents.keys():
-                    base_ant = ant_key.split("_@_")[0]
-                    self._evidence_to_conditions.setdefault(base_ant, set()).add(cond_name)
-                    self._evidence_to_conditions.setdefault(ant_key, set()).add(cond_name)
 
             # Build parent-child dependency mapping from code_question
             for ev_id, ev_info in self._evidences.items():
@@ -92,29 +100,23 @@ class DDXPlusEvidenceProvider:
 
             self._loaded = True
             logger.info(
-                f"DDXPlus ontology successfully indexed: {len(self._evidences)} evidences, "
-                f"{len(self._conditions)} conditions loaded from '{loaded_path}'."
+                f"Clinical evidence ontology successfully indexed: {len(self._evidences)} evidences "
+                f"loaded from '{loaded_path}'."
             )
         except Exception as exc:
-            logger.error(f"Failed to load DDXPlus ontology from '{loaded_path}': {exc}")
+            logger.error(f"Failed to load clinical evidence ontology from '{loaded_path}': {exc}")
 
     @property
     def is_loaded(self) -> bool:
         return self._loaded and len(self._evidences) > 0
 
     def get_evidence(self, evidence_id: str) -> Optional[Dict[str, Any]]:
-        """Lookup evidence metadata by base ID or composite code (e.g. 'E_53' or 'E_54_@_V_180')."""
+        """Lookup evidence metadata by base ID or composite code (e.g. 'E_53' or 'adaptive_functional_impact')."""
         base_id = evidence_id.split("_@_")[0]
-        return self._evidences.get(base_id)
+        return self._evidences.get(base_id) or ADAPTIVE_EVIDENCE_REGISTRY.get(base_id)
 
     def get_all_evidences(self) -> Dict[str, Dict[str, Any]]:
         return self._evidences
-
-    def get_condition(self, condition_name: str) -> Optional[Dict[str, Any]]:
-        return self._conditions.get(condition_name)
-
-    def get_all_conditions(self) -> Dict[str, Dict[str, Any]]:
-        return self._conditions
 
     def get_evidence_question(self, evidence_id: str, lang: str = "en") -> str:
         ev = self.get_evidence(evidence_id)
@@ -123,6 +125,16 @@ class DDXPlusEvidenceProvider:
         if lang == "fr":
             return ev.get("question_fr") or ev.get("question_en", "")
         return ev.get("question_en") or ev.get("question_fr", "")
+
+    def get_evidence_name(self, evidence_id: str) -> str:
+        """Returns human-readable name or question for an evidence code."""
+        ev = self.get_evidence(evidence_id)
+        if not ev:
+            return evidence_id
+        q = ev.get("question_en")
+        if q:
+            return q.strip().rstrip("?")
+        return ev.get("name") or evidence_id
 
     def get_evidence_type(self, evidence_id: str) -> str:
         """Returns 'B' (binary), 'C' (categorical), 'M' (multichoice), or 'N' (numeric)."""
@@ -142,22 +154,6 @@ class DDXPlusEvidenceProvider:
         if not ev:
             return False
         return bool(ev.get("is_antecedent", False))
-
-    def get_condition_symptoms(self, condition_name: str) -> Dict[str, Any]:
-        cond = self.get_condition(condition_name)
-        if not cond:
-            return {}
-        return cond.get("symptoms", {})
-
-    def get_condition_severity(self, condition_name: str) -> int:
-        cond = self.get_condition(condition_name)
-        if not cond:
-            return 1
-        return int(cond.get("severity", 1))
-
-    def get_conditions_for_evidence(self, evidence_id: str) -> Set[str]:
-        base_id = evidence_id.split("_@_")[0]
-        return self._evidence_to_conditions.get(base_id, set())
 
     def get_parent_evidence(self, evidence_id: str) -> Optional[str]:
         """Returns the parent evidence ID if this evidence depends on a parent question."""
@@ -216,6 +212,18 @@ class DDXPlusEvidenceProvider:
                     return False, f"Invalid values {invalid_vals} for evidence '{evidence_id}'"
             elif isinstance(value, str) and value not in possible_vals:
                 return False, f"Invalid value '{value}' for evidence '{evidence_id}'"
+        elif dtype == "B" and value is not None and possible_vals:
+            # Check boolean equivalence or registered descriptive value
+            valid_set = set(possible_vals) | {
+                True, False, 1, 0, "1", "0", "True", "False",
+                "present", "absent", "Present", "Absent", "yes", "no", "Yes", "No",
+            }
+            if ev.get("affirmative_value"):
+                valid_set.add(ev.get("affirmative_value"))
+            if ev.get("negative_value"):
+                valid_set.add(ev.get("negative_value"))
+            if value not in valid_set:
+                return False, f"Invalid value '{value}' for binary evidence '{evidence_id}'"
 
         return True, None
 

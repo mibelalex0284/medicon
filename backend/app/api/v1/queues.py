@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.core.dependencies import AuthenticatedUser, require_doctor
@@ -31,6 +31,37 @@ def _get_authenticated_doctor(db: Session, current_user: AuthenticatedUser) -> D
 
 
 @router.get(
+    "/active-consultation",
+    response_model=Optional[ConsultationResponse],
+    summary="Get Doctor's Active Consultation",
+    description="Retrieves the currently active (IN_PROGRESS) consultation for the authenticated doctor.",
+)
+def get_active_consultation(
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_doctor),
+) -> Optional[ConsultationResponse]:
+    doc = _get_authenticated_doctor(db, current_user)
+    return consultation_service.get_active_by_doctor(db, doc.id)
+
+
+@router.get(
+    "/consultation/{queue_entry_id}",
+    response_model=ConsultationResponse,
+    summary="Get Consultation for Queue Entry",
+    description="Retrieves the consultation associated with a specific queue entry.",
+)
+def get_consultation_by_queue_entry(
+    queue_entry_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_doctor),
+) -> ConsultationResponse:
+    doc = _get_authenticated_doctor(db, current_user)
+    return consultation_service.get_by_queue_entry(
+        db, queue_entry_id, doctor_id=doc.id
+    )
+
+
+@router.get(
     "/{doctor_id}/current",
     response_model=List[QueueEntryResponse],
     summary="Get Doctor's Active Queue",
@@ -41,14 +72,19 @@ def get_doctor_queue(
     db: Session = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_doctor),
 ) -> List[QueueEntryResponse]:
-    if not current_user.is_admin:
+    if doctor_id == "me":
         doc = _get_authenticated_doctor(db, current_user)
-        if doc.id != doctor_id:
-            raise ForbiddenError(
-                message="Access forbidden: you cannot view another doctor's operational queue",
-                code="FORBIDDEN_QUEUE_ACCESS",
-            )
-    return queue_service.get_doctor_current_queue(db, doctor_id)
+        target_doctor_id = doc.id
+    else:
+        if not current_user.is_admin:
+            doc = _get_authenticated_doctor(db, current_user)
+            if doc.id != doctor_id:
+                raise ForbiddenError(
+                    message="Access forbidden: you cannot view another doctor's operational queue",
+                    code="FORBIDDEN_QUEUE_ACCESS",
+                )
+        target_doctor_id = doctor_id
+    return queue_service.get_doctor_current_queue(db, target_doctor_id)
 
 
 @router.post(
@@ -98,3 +134,18 @@ def complete_consultation(
     return consultation_service.complete_consultation(
         db, queue_entry_id, doctor_id=doc.id
     )
+
+
+@router.post(
+    "/{queue_entry_id}/no-show",
+    response_model=QueueEntryResponse,
+    summary="Mark Patient as No-Show",
+    description="Transitions queue entry to NO_SHOW and updates associated appointment.",
+)
+def mark_no_show(
+    queue_entry_id: str,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_doctor),
+) -> QueueEntryResponse:
+    doc = _get_authenticated_doctor(db, current_user)
+    return queue_service.mark_no_show(db, queue_entry_id, doctor_id=doc.id)
