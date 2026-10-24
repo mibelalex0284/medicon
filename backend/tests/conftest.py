@@ -45,6 +45,26 @@ def client(db_session: Session) -> TestClient:
 
 
 @pytest.fixture
+def auth_seeded_db(db_session: Session) -> Session:
+    """Pre-seeds standard test profiles for test suites verifying role guards."""
+    from app.models.profile import Profile, UserRole
+    profiles = [
+        Profile(auth_user_id="patient-123", role=UserRole.PATIENT, full_name="Patient 123", email="p123@test.org"),
+        Profile(auth_user_id="patient-999", role=UserRole.PATIENT, full_name="Patient 999", email="p999@test.org"),
+        Profile(auth_user_id="doctor-456", role=UserRole.DOCTOR, full_name="Dr. 456", email="d456@test.org", hospital_id="hosp-001"),
+        Profile(auth_user_id="doctor-other", role=UserRole.DOCTOR, full_name="Dr. Other", email="dother@test.org", hospital_id="hosp-002"),
+        Profile(auth_user_id="admin-789", role=UserRole.ADMIN, full_name="Admin 789", email="a789@test.org", hospital_id="hosp-001"),
+        Profile(auth_user_id="admin-global", role=UserRole.ADMIN, full_name="Admin Global", email="aglobal@test.org", hospital_id=None),
+    ]
+    for p in profiles:
+        existing = db_session.query(Profile).filter(Profile.auth_user_id == p.auth_user_id).first()
+        if not existing:
+            db_session.add(p)
+    db_session.commit()
+    return db_session
+
+
+@pytest.fixture
 def patient_token() -> str:
     return create_access_token(
         subject="patient-123",

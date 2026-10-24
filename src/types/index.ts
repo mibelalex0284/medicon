@@ -1,4 +1,5 @@
-export type UserRole = "patient" | "doctor" | "admin";
+export type AuthoritativeRole = "patient" | "doctor" | "admin";
+export type UserRole = AuthoritativeRole | "unregistered";
 
 export interface User {
   id: string;
@@ -7,6 +8,7 @@ export interface User {
   role: UserRole;
   avatarUrl?: string;
   createdAt: string;
+  hospital_id?: string | null;
 }
 
 export interface PatientProfile {

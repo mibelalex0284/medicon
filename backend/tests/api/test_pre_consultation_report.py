@@ -25,6 +25,11 @@ def completed_triage_session(db_session: Session):
         hosp = Hospital(id="hosp-001", name="Metro General", code="METRO_GEN")
         db_session.add(hosp)
         db_session.flush()
+    hosp2 = db_session.query(Hospital).filter(Hospital.id == "hosp-002").first()
+    if not hosp2:
+        hosp2 = Hospital(id="hosp-002", name="Cross General", code="CROSS_GEN")
+        db_session.add(hosp2)
+        db_session.flush()
 
     # 1. Create patient owner (auth_user_id='patient-123')
     pat_prof = profile_service.create_profile(
@@ -55,6 +60,48 @@ def completed_triage_session(db_session: Session):
     patient_service.create_patient(
         db_session,
         PatientCreate(profile_id=other_prof.id, date_of_birth=datetime.date(1993, 7, 20)),
+    )
+
+    # 2b. Create doctor and admin profiles for authorization tests
+    profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="doctor-456",
+            role=UserRole.DOCTOR,
+            full_name="Dr. Local",
+            email="doc.local@example.com",
+            hospital_id="hosp-001",
+        ),
+    )
+    profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="doctor-other",
+            role=UserRole.DOCTOR,
+            full_name="Dr. Cross",
+            email="doc.cross@example.com",
+            hospital_id="hosp-002",
+        ),
+    )
+    profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="admin-789",
+            role=UserRole.ADMIN,
+            full_name="Admin Local",
+            email="admin.local@example.com",
+            hospital_id="hosp-001",
+        ),
+    )
+    profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="admin-other",
+            role=UserRole.ADMIN,
+            full_name="Admin Cross",
+            email="admin.cross@example.com",
+            hospital_id="hosp-002",
+        ),
     )
 
     # 3. Create specialty

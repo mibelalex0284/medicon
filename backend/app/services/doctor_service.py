@@ -38,6 +38,7 @@ class DoctorService:
         hospital_id: Optional[str] = None,
         specialty_id: Optional[str] = None,
         department_id: Optional[str] = None,
+        is_active: Optional[bool] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Doctor]:
@@ -46,6 +47,7 @@ class DoctorService:
             hospital_id=hospital_id,
             specialty_id=specialty_id,
             department_id=department_id,
+            is_active=is_active,
             skip=skip,
             limit=limit,
         )

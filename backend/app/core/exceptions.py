@@ -42,6 +42,16 @@ class ConflictError(AppException):
         super().__init__(code=code, message=message, status_code=status.HTTP_409_CONFLICT)
 
 
+class BadRequestError(AppException):
+    def __init__(self, message: str = "Bad request", code: str = "BAD_REQUEST"):
+        super().__init__(code=code, message=message, status_code=status.HTTP_400_BAD_REQUEST)
+
+
+class InternalServerError(AppException):
+    def __init__(self, message: str = "Internal server error", code: str = "INTERNAL_SERVER_ERROR"):
+        super().__init__(code=code, message=message, status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class InvalidStateTransitionError(AppException):
     def __init__(
         self,

@@ -78,6 +78,100 @@ describe("Doctor Availability Service (Frontend)", () => {
     const body = await res.json();
     assert.equal(body.detail, "Doctor schedule retrieval internal database error");
   });
+
+  test("Availability response accurately distinguishes unconfigured doctor from fully booked doctor", async () => {
+    // Unconfigured doctor
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        doctor_id: "doc_unscheduled",
+        hospital_id: "hosp_1",
+        appointment_date: "2026-10-24",
+        slot_duration_minutes: 15,
+        has_schedule: false,
+        schedule_configured: false,
+        is_fully_booked: false,
+        slots: [],
+      }),
+    });
+
+    const resUnsched = await globalThis.fetch("http://localhost:8000/api/v1/doctors/doc_unscheduled/availability?appointment_date=2026-10-24");
+    const unschedData = await resUnsched.json();
+    assert.equal(unschedData.has_schedule, false);
+    assert.equal(unschedData.schedule_configured, false);
+    assert.equal(unschedData.is_fully_booked, false);
+
+    // Fully booked doctor
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        doctor_id: "doc_booked",
+        hospital_id: "hosp_1",
+        appointment_date: "2026-10-24",
+        slot_duration_minutes: 30,
+        has_schedule: true,
+        schedule_configured: true,
+        is_fully_booked: true,
+        slots: [
+          { start_time: "09:00:00", end_time: "09:30:00", is_available: false },
+          { start_time: "09:30:00", end_time: "10:00:00", is_available: false },
+        ],
+      }),
+    });
+
+    const resBooked = await globalThis.fetch("http://localhost:8000/api/v1/doctors/doc_booked/availability?appointment_date=2026-10-24");
+    const bookedData = await resBooked.json();
+    assert.equal(bookedData.has_schedule, true);
+    assert.equal(bookedData.schedule_configured, true);
+    assert.equal(bookedData.is_fully_booked, true);
+    assert.equal(bookedData.slots.length, 2);
+    assert.equal(bookedData.slots.every(s => !s.is_available), true);
+  });
+
+  test("Admin doctor schedule retrieval and batch configuration contract", async () => {
+    let capturedBody = null;
+    globalThis.fetch = async (url, options) => {
+      if (options?.method === "PUT") {
+        capturedBody = JSON.parse(options.body);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => capturedBody.schedules.map((s, idx) => ({ id: `sched_${idx}`, ...s })),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          { id: "s1", day_of_week: 0, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true }
+        ],
+      };
+    };
+
+    // GET
+    const resGet = await globalThis.fetch("http://localhost:8000/api/v1/admin/doctors/doc_javad/schedules");
+    const schedules = await resGet.json();
+    assert.equal(schedules.length, 1);
+    assert.equal(schedules[0].day_of_week, 0);
+
+    // PUT
+    const updatePayload = {
+      schedules: [
+        { day_of_week: 0, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true },
+        { day_of_week: 1, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true },
+      ]
+    };
+    const resPut = await globalThis.fetch("http://localhost:8000/api/v1/admin/doctors/doc_javad/schedules", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatePayload),
+    });
+    const putData = await resPut.json();
+    assert.equal(putData.length, 2);
+    assert.equal(capturedBody.schedules.length, 2);
+  });
 });
 
 describe("Appointment Booking Operations (Frontend Service Integration)", () => {

@@ -12,6 +12,7 @@ from app.services.llm import get_llm_provider, close_llm_provider
 async def lifespan(app: FastAPI):
     # Application Startup: Initialize application-lifetime LLM provider / connection pool
     logger.info("Initializing CareRoute-X application resources...")
+    settings.validate_production_configuration()
     try:
         get_llm_provider()
     except Exception as exc:

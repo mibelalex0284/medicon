@@ -94,8 +94,8 @@ def test_full_patient_to_doctor_e2e_workflow_and_failure_matrix(
             doctor_id=doc_a.id,
             hospital_id=hosp_a.id,
             day_of_week=today.weekday(),
-            start_time=datetime.time(9, 0),
-            end_time=datetime.time(17, 0),
+            start_time=datetime.time(0, 0),
+            end_time=datetime.time(23, 59),
             slot_duration_minutes=30,
         ),
     )
@@ -303,6 +303,8 @@ def test_full_patient_to_doctor_e2e_workflow_and_failure_matrix(
 
     # --- NEGATIVE: Doctor attempts to start a second concurrent consultation ---
     # Setup patient 2 appointment and checkin
+    res_avail_p2 = client.get(f"/api/v1/doctors/{doc_a.id}/availability?appointment_date={today.isoformat()}")
+    p2_slot = next(s for s in res_avail_p2.json()["slots"] if s["is_available"])
     res_book_p2 = client.post(
         "/api/v1/appointments",
         json={
@@ -310,8 +312,8 @@ def test_full_patient_to_doctor_e2e_workflow_and_failure_matrix(
             "doctor_id": doc_a.id,
             "hospital_id": hosp_a.id,
             "appointment_date": today.isoformat(),
-            "scheduled_start": "14:00:00",
-            "scheduled_end": "14:30:00",
+            "scheduled_start": p2_slot["start_time"],
+            "scheduled_end": p2_slot["end_time"],
             "reason": "Headache",
         },
         headers=other_patient_headers,

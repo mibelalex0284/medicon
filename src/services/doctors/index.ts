@@ -135,7 +135,74 @@ export interface DoctorAvailabilityResponse {
   hospital_id: string;
   appointment_date: string;
   slot_duration_minutes: number;
+  has_schedule?: boolean;
+  schedule_configured?: boolean;
+  is_fully_booked?: boolean;
   slots: AvailableSlot[];
+}
+
+export interface DoctorScheduleItem {
+  id?: string;
+  doctor_id?: string;
+  hospital_id?: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  slot_duration_minutes: number;
+  is_active: boolean;
+}
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish",
+  hi: "Hindi",
+  ml: "Malayalam",
+  fr: "French",
+  ar: "Arabic",
+  de: "German",
+  zh: "Mandarin",
+  ta: "Tamil",
+  te: "Telugu",
+  bn: "Bengali",
+};
+
+export function formatDoctorLanguages(langStr?: string | null): string {
+  if (!langStr) return "English";
+  return (
+    langStr
+      .split(",")
+      .map((code) => {
+        const clean = code.trim().toLowerCase();
+        return (
+          LANGUAGE_NAMES[clean] ||
+          (clean.length > 0 ? clean.charAt(0).toUpperCase() + clean.slice(1) : "")
+        );
+      })
+      .filter(Boolean)
+      .join(", ") || "English"
+  );
+}
+
+export function getDoctorInitials(name?: string | null): string {
+  if (!name) return "DR";
+  const clean = name
+    .replace(/\b(Dr|Doctor|MD|MBBS|PhD|MS|DO)\b/gi, "")
+    .replace(/[^a-zA-Z\s]/g, "")
+    .trim();
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "DR";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function formatDoctorSpecialties(doctor?: DoctorResponse | null): string {
+  if (!doctor || !doctor.specialties || doctor.specialties.length === 0) {
+    return "General Medicine";
+  }
+  const specNames = doctor.specialties
+    .map((s) => s.specialty?.name)
+    .filter(Boolean) as string[];
+  return specNames.length > 0 ? specNames.join(" & ") : "General Medicine";
 }
 
 const API_BASE_URL =
@@ -169,23 +236,31 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
     } catch {
       // Supabase not configured or in fallback mode
     }
-
-    // 3. Fallback dev token from environment variable if configured
-    if (process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN) {
-      headers["Authorization"] = `Bearer ${process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN}`;
-    }
   }
 
   return headers;
 }
 
+export class DoctorApiError extends Error {
+  status: number;
+  code?: string;
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.name = "DoctorApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let errorMessage = `HTTP error ${res.status}`;
+    let errorCode: string | undefined;
     try {
       const data = await res.json();
       if (data?.error?.message) {
         errorMessage = data.error.message;
+        errorCode = data.error.code;
       } else if (data?.detail) {
         errorMessage =
           typeof data.detail === "string"
@@ -195,7 +270,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     } catch {
       // Non-JSON response
     }
-    throw new Error(errorMessage);
+    throw new DoctorApiError(errorMessage, res.status, errorCode);
   }
   return res.json() as Promise<T>;
 }
@@ -279,6 +354,16 @@ export const DOCTORS_DATABASE: Doctor[] = [
   },
 ];
 
+export interface DoctorLifecycleResponse {
+  doctor_id: string;
+  profile_id: string;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+  status: "active" | "deactivated" | "deleted";
+  message: string;
+}
+
 export class DoctorService {
   /**
    * POST /api/v1/doctors/recommend
@@ -337,14 +422,124 @@ export class DoctorService {
    * GET /api/v1/doctors/admin/list
    * Authoritatively retrieves registered doctors for admin directory.
    */
-  async listDoctorsAdmin(hospitalId?: string): Promise<DoctorResponse[]> {
+  async listDoctorsAdmin(
+    hospitalId?: string,
+    status?: "all" | "active" | "inactive"
+  ): Promise<DoctorResponse[]> {
     const headers = await getAuthHeaders();
-    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    const params = new URLSearchParams();
+    if (hospitalId) params.append("hospital_id", hospitalId);
+    if (status && status !== "all") params.append("status", status);
+    const query = params.toString() ? `?${params.toString()}` : "";
     const res = await fetch(`${API_BASE_URL}/api/v1/doctors/admin/list${query}`, {
       method: "GET",
       headers,
     });
     return handleResponse<DoctorResponse[]>(res);
+  }
+
+  /**
+   * PATCH /api/v1/admin/doctors/{doctorId}/status
+   * Deactivates or reactivates a doctor account.
+   */
+  async updateDoctorStatus(
+    doctorId: string,
+    isActive: boolean,
+    reason?: string
+  ): Promise<DoctorLifecycleResponse> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/doctors/${encodeURIComponent(doctorId)}/status`, {
+      method: "PATCH",
+      headers,
+      body: JSON.stringify({ is_active: isActive, reason: reason || null }),
+    });
+    return handleResponse<DoctorLifecycleResponse>(res);
+  }
+
+  /**
+   * DELETE /api/v1/admin/doctors/{doctorId}
+   * Safely deletes a doctor record if zero dependent clinical records exist.
+   */
+  async deleteDoctor(doctorId: string): Promise<DoctorLifecycleResponse> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/doctors/${encodeURIComponent(doctorId)}`, {
+      method: "DELETE",
+      headers,
+    });
+    return handleResponse<DoctorLifecycleResponse>(res);
+  }
+
+  /**
+   * GET /api/v1/hospitals
+   * Lists active hospitals for admin assignment and tenant filtering.
+   */
+  async listHospitals(): Promise<HospitalResponse[]> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/hospitals`, {
+      method: "GET",
+      headers,
+    });
+    return handleResponse<HospitalResponse[]>(res);
+  }
+
+  /**
+   * GET /api/v1/departments
+   * Lists departments, optionally filtered by hospital ID.
+   */
+  async listDepartments(hospitalId?: string): Promise<DepartmentResponse[]> {
+    const headers = await getAuthHeaders();
+    const query = hospitalId ? `?hospital_id=${encodeURIComponent(hospitalId)}` : "";
+    const res = await fetch(`${API_BASE_URL}/api/v1/departments${query}`, {
+      method: "GET",
+      headers,
+    });
+    return handleResponse<DepartmentResponse[]>(res);
+  }
+
+  /**
+   * GET /api/v1/specialties
+   * Lists all active clinical specialties.
+   */
+  async listSpecialties(): Promise<SpecialtyResponse[]> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/specialties`, {
+      method: "GET",
+      headers,
+    });
+    return handleResponse<SpecialtyResponse[]>(res);
+  }
+
+  /**
+   * GET /api/v1/admin/doctors/{doctorId}/schedules
+   * Retrieves configured weekly consultation schedules for a physician.
+   */
+  async getDoctorSchedules(doctorId: string): Promise<DoctorScheduleItem[]> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/doctors/${doctorId}/schedules`, {
+      method: "GET",
+      headers,
+    });
+    return handleResponse<DoctorScheduleItem[]>(res);
+  }
+
+  /**
+   * PUT /api/v1/admin/doctors/{doctorId}/schedules
+   * Updates weekly consultation schedule slots for a physician.
+   */
+  async updateDoctorSchedules(
+    doctorId: string,
+    schedules: DoctorScheduleItem[]
+  ): Promise<DoctorScheduleItem[]> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/doctors/${doctorId}/schedules`, {
+      method: "PUT",
+      headers: {
+        ...headers,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ schedules }),
+    });
+    return handleResponse<DoctorScheduleItem[]>(res);
   }
 
   getAllDoctors(): Doctor[] {

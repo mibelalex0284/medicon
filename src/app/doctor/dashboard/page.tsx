@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { queueService } from "@/services/queue";
 import { consultationService } from "@/services/consultation";
+import { appointmentService } from "@/services/appointments";
+import { doctorService, DoctorResponse } from "@/services/doctors";
 import { QueueEntry, Consultation } from "@/types";
 import { QueueToken } from "@/components/common/QueueToken";
 import { WaitEstimate } from "@/components/common/WaitEstimate";
@@ -28,6 +30,9 @@ export default function DoctorDashboard() {
   const router = useRouter();
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [activeConsult, setActiveConsult] = useState<Consultation | null>(null);
+  const [doctorProfile, setDoctorProfile] = useState<DoctorResponse | null>(null);
+  const [appointmentCount, setAppointmentCount] = useState<number | null>(null);
+  const [isLoadingAppointments, setIsLoadingAppointments] = useState<boolean>(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
@@ -35,13 +40,18 @@ export default function DoctorDashboard() {
 
     const loadData = async () => {
       try {
-        const [q, consult] = await Promise.all([
+        const [q, consult, doc, appts] = await Promise.all([
           queueService.getDoctorQueue("me"),
           consultationService.getActiveConsultation("me"),
+          doctorService.getCurrentDoctor().catch(() => null),
+          appointmentService.getAllAppointments().catch(() => []),
         ]);
         if (isMounted) {
           setQueue(q);
           setActiveConsult(consult);
+          if (doc) setDoctorProfile(doc);
+          setAppointmentCount(appts.length);
+          setIsLoadingAppointments(false);
         }
       } catch {
         // ignore on unmount
@@ -68,6 +78,13 @@ export default function DoctorDashboard() {
 
   // Next patient to act on: either currently called, or the first waiting patient
   const nextPatient = calledPatient || waitingPatients[0];
+
+  const hour = new Date().getHours();
+  const timeGreeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const doctorName = doctorProfile?.profile?.full_name || "Doctor";
+  const stationName =
+    [doctorProfile?.department?.name, doctorProfile?.hospital?.name].filter(Boolean).join(" · ") ||
+    "Outpatient Clinic";
 
   const handleCallPatient = async (queueId: string) => {
     if (actionLoading) return;
@@ -100,13 +117,20 @@ export default function DoctorDashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-4">
         <div>
           <span className="text-xs font-semibold text-teal-700 uppercase tracking-wider">
-            Room 204 · Adult Outpatient Clinic
+            {stationName}
           </span>
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-            Good morning, Dr. Menon.
+            {timeGreeting}, {doctorName}.
           </h1>
           <p className="text-sm font-semibold text-slate-700 mt-1">
-            18 appointments ·{" "}
+            {isLoadingAppointments ? (
+              <span>Loading schedule...</span>
+            ) : (
+              <span>
+                {appointmentCount ?? 0} {(appointmentCount ?? 0) === 1 ? "appointment" : "appointments"}
+              </span>
+            )}{" "}
+            ·{" "}
             <span className="text-sky-700 font-bold">
               {waitingPatients.length + (calledPatient ? 1 : 0)} waiting
             </span>{" "}
@@ -151,7 +175,7 @@ export default function DoctorDashboard() {
                     {inConsultationPatient.patientName}
                   </span>
                   <span className="text-xs text-emerald-800 font-medium">
-                    (In Room 204 now)
+                    (In consultation room now)
                   </span>
                 </div>
                 <p className="text-xs text-emerald-800">
@@ -242,7 +266,7 @@ export default function DoctorDashboard() {
               <div className="pt-2 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100">
                 <span className="text-xs text-slate-500">
                   {nextPatient.status === "called"
-                    ? "Patient was called to Room 204. Ready to begin intake."
+                    ? "Patient was called. Ready to begin intake."
                     : "Patient is in waiting lounge. Call into consultation room."}
                 </span>
 
@@ -255,7 +279,7 @@ export default function DoctorDashboard() {
                       className="bg-amber-600 hover:bg-amber-700 font-semibold gap-1.5 shadow-xs"
                     >
                       <PhoneCall size={16} />
-                      Call Patient to Room 204
+                      Call Patient to Station
                     </Button>
                   )}
 
@@ -277,7 +301,7 @@ export default function DoctorDashboard() {
             <CheckCircle size={32} className="text-emerald-600 mx-auto mb-2" />
             <h3 className="font-bold text-slate-800">Queue is Clear</h3>
             <p className="text-xs text-slate-500 mt-1">
-              All waiting patients for Room 204 have completed consultations.
+              All waiting patients have completed consultations.
             </p>
           </div>
         )}

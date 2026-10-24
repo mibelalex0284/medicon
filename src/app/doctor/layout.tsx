@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { doctorService, DoctorResponse, getDoctorInitials } from "@/services/doctors";
 import {
   Stethoscope,
   LayoutDashboard,
@@ -34,7 +35,66 @@ export default function DoctorLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { logout, loginAsRole } = useAuth();
+  const { logout, loginAsRole, user, isLoading } = useAuth();
+  const router = useRouter();
+  const [doctor, setDoctor] = useState<DoctorResponse | null>(null);
+  const [isLoadingDoctor, setIsLoadingDoctor] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (!user) {
+        router.replace("/login");
+      } else if (user.role === "unregistered") {
+        router.replace("/account-setup");
+      } else if (user.role !== "doctor") {
+        if (user.role === "patient") router.replace("/patient/dashboard");
+        else if (user.role === "admin") router.replace("/admin/dashboard");
+        else router.replace("/login");
+      }
+    }
+  }, [user, isLoading, router]);
+
+  useEffect(() => {
+    if (!user || user.role !== "doctor") return;
+    let isMounted = true;
+    doctorService
+      .getCurrentDoctor()
+      .then((data) => {
+        if (isMounted) {
+          setDoctor(data);
+          setIsLoadingDoctor(false);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsLoadingDoctor(false);
+        }
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [user]);
+
+  if (isLoading || !user || user.role !== "doctor") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-3 border-teal-600 border-t-transparent" />
+          <p className="text-xs text-slate-500 font-medium tracking-wide">
+            Verifying clinical workspace access...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const doctorName = doctor?.profile?.full_name || (isLoadingDoctor ? "Loading..." : "Doctor");
+  const doctorInitials = getDoctorInitials(doctor?.profile?.full_name);
+  const departmentOrSpecialty =
+    doctor?.department?.name ||
+    doctor?.specialties?.[0]?.specialty?.name ||
+    "Outpatient Specialist";
+  const clinicStation = [departmentOrSpecialty, doctor?.hospital?.name].filter(Boolean).join(" · ") || "Outpatient Clinic";
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
@@ -62,21 +122,26 @@ export default function DoctorLayout({
           <div className="px-5 py-4 bg-slate-950/60 border-b border-slate-800/80">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30 flex items-center justify-center font-bold text-sm">
-                AM
+                {doctorInitials}
               </div>
               <div className="overflow-hidden">
-                <p className="text-sm font-semibold text-white truncate">
-                  Dr. Anita Menon, MD
+                <p className="text-sm font-semibold text-white truncate" title={doctorName}>
+                  {doctorName}
                 </p>
-                <p className="text-[11px] text-teal-300 font-mono">
-                  Room 204 · Adult OPD
+                <p className="text-[11px] text-teal-300 font-mono truncate" title={clinicStation}>
+                  {clinicStation}
                 </p>
               </div>
             </div>
             <div className="mt-2.5 flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] text-slate-300 font-medium">
-                Clinic Queue Active (Room 204)
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  doctor?.is_active === false ? "bg-amber-400" : "bg-emerald-400 animate-pulse"
+                )}
+              />
+              <span className="text-[11px] text-slate-300 font-medium truncate">
+                {doctor?.is_active === false ? "Clinic Station Paused" : "Clinic Queue Active"}
               </span>
             </div>
           </div>
@@ -112,22 +177,24 @@ export default function DoctorLayout({
 
           {/* Role switcher & Logout */}
           <div className="p-4 border-t border-slate-800 space-y-2 text-xs">
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <button
-                onClick={() => loginAsRole("patient")}
-                className="py-1.5 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1"
-              >
-                <Activity size={12} />
-                Patient
-              </button>
-              <button
-                onClick={() => loginAsRole("admin")}
-                className="py-1.5 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1"
-              >
-                <Building2 size={12} />
-                Admin
-              </button>
-            </div>
+            {process.env.NODE_ENV === "development" && (
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <button
+                  onClick={() => loginAsRole("patient")}
+                  className="py-1.5 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1"
+                >
+                  <Activity size={12} />
+                  Patient
+                </button>
+                <button
+                  onClick={() => loginAsRole("admin")}
+                  className="py-1.5 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1"
+                >
+                  <Building2 size={12} />
+                  Admin
+                </button>
+              </div>
+            )}
 
             <button
               onClick={logout}
@@ -144,11 +211,13 @@ export default function DoctorLayout({
       <div className="flex-1 md:pl-64 flex flex-col min-w-0">
         {/* Mobile Header */}
         <header className="sticky top-0 z-20 bg-slate-900 text-white px-4 py-3 flex md:hidden items-center justify-between border-b border-slate-800">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-teal-600 rounded-md text-white">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-1.5 bg-teal-600 rounded-md text-white shrink-0">
               <Stethoscope size={18} />
             </div>
-            <span className="text-sm font-bold">Dr. Menon · Room 204</span>
+            <span className="text-sm font-bold truncate max-w-[200px]" title={doctorName}>
+              {doctorName}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Link

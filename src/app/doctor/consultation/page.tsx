@@ -173,7 +173,7 @@ function DoctorConsultationInner() {
         </div>
         <div>
           <Button onClick={() => router.push("/doctor/queue")}>
-            Open Room 204 Queue
+            Open Clinical Queue
           </Button>
         </div>
       </div>

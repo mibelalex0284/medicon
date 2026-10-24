@@ -160,6 +160,21 @@ def test_cross_patient_access_forbidden(
         PatientCreate(profile_id=p1_prof.id, date_of_birth=date(1990, 1, 1)),
     )
 
+    # Create patient 2 (auth: patient-999)
+    p2_prof = profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="patient-999",
+            role=UserRole.PATIENT,
+            full_name="Patient Two",
+            email="p2@example.com",
+        ),
+    )
+    patient_service.create_patient(
+        db_session,
+        PatientCreate(profile_id=p2_prof.id, date_of_birth=date(1992, 2, 2)),
+    )
+
     # Patient 2 (auth: patient-999) attempts to read Patient 1's record
     res = client.get(f"/api/v1/patients/{p1.id}", headers=other_patient_headers)
     assert res.status_code == 403
@@ -186,6 +201,28 @@ def test_rbac_and_tenant_enforcement(
     # Setup Hospital B
     hosp_b = hospital_service.create_hospital(
         db_session, HospitalCreate(name="Hospital Beta", code="BETA-01")
+    )
+
+    # Ensure admin profiles exist in database with authoritative roles
+    profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="admin-789",
+            role=UserRole.ADMIN,
+            full_name="Admin Local",
+            email="admin789@hospital.org",
+            hospital_id=hosp_a.id,
+        ),
+    )
+    profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="admin-global",
+            role=UserRole.ADMIN,
+            full_name="Admin Global",
+            email="adminglobal@hospital.org",
+            hospital_id=None,
+        ),
     )
 
     # 1. Patient cannot create hospital (Admin only)

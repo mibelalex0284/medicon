@@ -9,6 +9,7 @@ from app.core.exceptions import (
     NotFoundError,
 )
 from app.models.appointment import Appointment, AppointmentStatus
+from app.models.doctor import Doctor
 from app.models.queue_entry import QueueStatus
 from app.repositories.appointment_repository import appointment_repo
 from app.repositories.doctor_repository import doctor_repo
@@ -79,6 +80,31 @@ class AppointmentService:
                 message=f"Doctor with id '{doctor_id}' not found",
                 code="DOCTOR_NOT_FOUND",
             )
+        if not doctor.is_active:
+            return DoctorAvailabilityResponse(
+                doctor_id=doctor_id,
+                hospital_id=doctor.hospital_id,
+                appointment_date=requested_date,
+                slot_duration_minutes=slot_duration_minutes or 15,
+                has_schedule=False,
+                schedule_configured=False,
+                is_fully_booked=False,
+                slots=[],
+            )
+
+        # 1. Check whether doctor has ANY active weekly schedule configured in the system
+        all_schedules = doctor_schedule_repo.get_by_doctor(db, doctor_id=doctor_id, is_active=True)
+        if not all_schedules:
+            return DoctorAvailabilityResponse(
+                doctor_id=doctor_id,
+                hospital_id=doctor.hospital_id,
+                appointment_date=requested_date,
+                slot_duration_minutes=slot_duration_minutes or 15,
+                has_schedule=False,
+                schedule_configured=False,
+                is_fully_booked=False,
+                slots=[],
+            )
 
         hospital = hospital_repo.get(db, doctor.hospital_id) if doctor.hospital_id else None
         hospital_tz = get_hospital_timezone(hospital)
@@ -92,14 +118,15 @@ class AppointmentService:
                 hospital_id=doctor.hospital_id,
                 appointment_date=requested_date,
                 slot_duration_minutes=slot_duration_minutes or 15,
+                has_schedule=False,
+                schedule_configured=True,
+                is_fully_booked=False,
                 slots=[],
             )
 
         # 0 = Monday ... 6 = Sunday
         weekday = requested_date.weekday()
-        schedules = doctor_schedule_repo.get_by_doctor_and_day(
-            db, doctor_id=doctor_id, day_of_week=weekday, is_active=True
-        )
+        schedules = [s for s in all_schedules if s.day_of_week == weekday]
 
         if not schedules:
             return DoctorAvailabilityResponse(
@@ -107,6 +134,9 @@ class AppointmentService:
                 hospital_id=doctor.hospital_id,
                 appointment_date=requested_date,
                 slot_duration_minutes=slot_duration_minutes or 15,
+                has_schedule=False,
+                schedule_configured=True,
+                is_fully_booked=False,
                 slots=[],
             )
 
@@ -117,6 +147,7 @@ class AppointmentService:
 
         available_slots: List[AvailableSlot] = []
 
+        duration = slot_duration_minutes or schedules[0].slot_duration_minutes
         for sched in schedules:
             duration = slot_duration_minutes or sched.slot_duration_minutes
             # Generate discrete slots
@@ -154,12 +185,18 @@ class AppointmentService:
                 # Move to next slot
                 current_start = slot_end
 
+        is_fully_booked = len(available_slots) > 0 and not any(s.is_available for s in available_slots)
+        if len(available_slots) == 0 and requested_date == today_in_hospital:
+            is_fully_booked = True
 
         return DoctorAvailabilityResponse(
             doctor_id=doctor_id,
             hospital_id=doctor.hospital_id,
             appointment_date=requested_date,
             slot_duration_minutes=duration,
+            has_schedule=True,
+            schedule_configured=True,
+            is_fully_booked=is_fully_booked,
             slots=available_slots,
         )
 
@@ -173,12 +210,22 @@ class AppointmentService:
                 code="PATIENT_NOT_FOUND",
             )
 
-        # 2. Validate doctor exists
-        doctor = doctor_repo.get(db, obj_in.doctor_id)
+        # 2. Validate doctor exists (lock doctor row to serialize concurrent booking attempts)
+        doctor = (
+            db.query(Doctor)
+            .filter(Doctor.id == obj_in.doctor_id)
+            .with_for_update()
+            .first()
+        )
         if not doctor:
             raise NotFoundError(
                 message=f"Doctor with id '{obj_in.doctor_id}' not found",
                 code="DOCTOR_NOT_FOUND",
+            )
+        if not doctor.is_active:
+            raise ConflictError(
+                message="Cannot book an appointment with an inactive or deactivated physician.",
+                code="DOCTOR_INACTIVE",
             )
 
         # 3. Validate hospital

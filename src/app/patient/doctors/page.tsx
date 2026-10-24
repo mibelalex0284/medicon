@@ -7,7 +7,10 @@ import {
   doctorService,
   DoctorRecommendationResponse,
   DoctorRecommendationItem,
+  DoctorAvailabilityResponse,
   AvailableSlot,
+  DoctorApiError,
+  HospitalResponse,
 } from "@/services/doctors";
 import {
   appointmentService,
@@ -40,6 +43,7 @@ import {
   Calendar,
   X,
   Check,
+  MapPin,
 } from "lucide-react";
 
 function formatFactorLabel(factor: string): string {
@@ -101,6 +105,26 @@ function DoctorMatchingContent() {
   const [response, setResponse] = useState<DoctorRecommendationResponse | null>(null);
   const [showAlternatives, setShowAlternatives] = useState(false);
 
+  // Hospital Selection State
+  const urlSessionId = searchParams.get("session_id") || searchParams.get("sessionId");
+  const urlHospitalId = searchParams.get("hospital_id") || searchParams.get("hospitalId");
+
+  const [selectedHospitalId, setSelectedHospitalId] = useState<string>(() => {
+    return (
+      urlHospitalId ||
+      (typeof window !== "undefined"
+        ? sessionStorage.getItem("careroute_selected_hospital_id") || ""
+        : "") ||
+      user?.hospital_id ||
+      ""
+    );
+  });
+
+  const [hospitals, setHospitals] = useState<HospitalResponse[]>([]);
+  const [isLoadingHospitals, setIsLoadingHospitals] = useState(false);
+  const [needsHospitalSelection, setNeedsHospitalSelection] = useState(false);
+  const [hospitalsError, setHospitalsError] = useState<string | null>(null);
+
   // Real Slot Availability & Booking State
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<DoctorRecommendationItem | null>(null);
   const [bookingDate, setBookingDate] = useState<string>(() => {
@@ -108,6 +132,7 @@ function DoctorMatchingContent() {
     return today.toISOString().split("T")[0];
   });
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
+  const [availabilityInfo, setAvailabilityInfo] = useState<DoctorAvailabilityResponse | null>(null);
   const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   const [slotsError, setSlotsError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<AvailableSlot | null>(null);
@@ -115,68 +140,117 @@ function DoctorMatchingContent() {
   const [isBooking, setIsBooking] = useState(false);
   const [bookingSuccess, setBookingSuccess] = useState(false);
 
-  // Retrieve session_id from query params or sessionStorage fallback
-  const urlSessionId = searchParams.get("session_id") || searchParams.get("sessionId");
+  const loadHospitals = async () => {
+    setIsLoadingHospitals(true);
+    setHospitalsError(null);
+    try {
+      const data = await doctorService.listHospitals();
+      const activeList = (data || []).filter((h) => h.is_active !== false);
+      setHospitals(activeList);
+    } catch (err: unknown) {
+      setHospitalsError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load healthcare facilities. Please try again."
+      );
+    } finally {
+      setIsLoadingHospitals(false);
+    }
+  };
 
-  useEffect(() => {
-    let isMounted = true;
+  const handleSelectHospital = (hospId: string) => {
+    setSelectedHospitalId(hospId);
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem("careroute_selected_hospital_id", hospId);
+    }
+    const currentParams = new URLSearchParams(searchParams.toString());
+    currentParams.set("hospital_id", hospId);
+    router.replace(`/patient/doctors?${currentParams.toString()}`);
+    setNeedsHospitalSelection(false);
+    fetchRecommendations(hospId);
+  };
 
-    async function fetchRecommendations() {
-      setIsLoading(true);
-      setErrorMessage(null);
+  async function fetchRecommendations(hospIdOverride?: string) {
+    setIsLoading(true);
+    setErrorMessage(null);
 
-      const resolvedSessionId =
-        urlSessionId ||
-        (typeof window !== "undefined"
-          ? sessionStorage.getItem("careroute_triage_session_id")
-          : null);
+    const resolvedSessionId =
+      urlSessionId ||
+      (typeof window !== "undefined"
+        ? sessionStorage.getItem("careroute_triage_session_id")
+        : null);
 
-      const storedSpecialtyId =
-        typeof window !== "undefined"
-          ? sessionStorage.getItem("careroute_triage_specialty_id")
-          : null;
+    const storedSpecialtyId =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("careroute_triage_specialty_id")
+        : null;
 
-      if (!resolvedSessionId && !storedSpecialtyId) {
-        if (isMounted) {
-          setIsLoading(false);
-          setErrorMessage("NO_SESSION");
-        }
-        return;
-      }
-
-      try {
-        const payload: { triage_session_id?: string; specialty_id?: string } = {};
-        if (resolvedSessionId) {
-          payload.triage_session_id = resolvedSessionId;
-        } else if (storedSpecialtyId) {
-          payload.specialty_id = storedSpecialtyId;
-        }
-
-        const data = await doctorService.recommendDoctors(payload);
-        if (isMounted) {
-          setResponse(data);
-        }
-      } catch (err: unknown) {
-        if (isMounted) {
-          const msg =
-            err instanceof Error
-              ? err.message
-              : "Failed to retrieve doctor recommendations from clinical service.";
-          setErrorMessage(msg);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
+    if (!resolvedSessionId && !storedSpecialtyId) {
+      setIsLoading(false);
+      setErrorMessage("NO_SESSION");
+      return;
     }
 
-    fetchRecommendations();
+    const effectiveHospId =
+      hospIdOverride !== undefined
+        ? hospIdOverride
+        : (selectedHospitalId ||
+            urlHospitalId ||
+            (typeof window !== "undefined"
+              ? sessionStorage.getItem("careroute_selected_hospital_id")
+              : null) ||
+            user?.hospital_id ||
+            null);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [urlSessionId]);
+    try {
+      const payload: { triage_session_id?: string; specialty_id?: string; hospital_id?: string } = {};
+      if (resolvedSessionId) {
+        payload.triage_session_id = resolvedSessionId;
+      } else if (storedSpecialtyId) {
+        payload.specialty_id = storedSpecialtyId;
+      }
+      if (effectiveHospId) {
+        payload.hospital_id = effectiveHospId;
+      }
+
+      const data = await doctorService.recommendDoctors(payload);
+      setResponse(data);
+      if (data.applied_hospital_id) {
+        setSelectedHospitalId(data.applied_hospital_id);
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem("careroute_selected_hospital_id", data.applied_hospital_id);
+        }
+      }
+      setNeedsHospitalSelection(false);
+    } catch (err: unknown) {
+      if (
+        (err instanceof DoctorApiError && err.code === "MISSING_HOSPITAL_CONTEXT") ||
+        (err instanceof Error && err.message.toLowerCase().includes("hospital id must be specified")) ||
+        (err instanceof Error && err.message.toLowerCase().includes("hospital selection is required"))
+      ) {
+        setNeedsHospitalSelection(true);
+        loadHospitals();
+        return;
+      }
+      if (err instanceof DoctorApiError && err.code === "FORBIDDEN_CROSS_HOSPITAL_ACCESS") {
+        setErrorMessage(
+          "Your patient account is registered with another hospital facility. Recommendations are restricted to your affiliated hospital."
+        );
+        return;
+      }
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Failed to retrieve doctor recommendations from clinical service.";
+      setErrorMessage(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchRecommendations();
+  }, [urlSessionId, urlHospitalId]);
 
   // Load real doctor availability whenever a doctor is selected or date changes
   useEffect(() => {
@@ -186,11 +260,13 @@ function DoctorMatchingContent() {
     setSlotsError(null);
     setSelectedSlot(null);
     setBookingError(null);
+    setAvailabilityInfo(null);
 
     doctorService
       .getDoctorAvailability(selectedDoctorForBooking.doctor.id, bookingDate)
       .then((avail) => {
         if (isMounted) {
+          setAvailabilityInfo(avail);
           let slots = avail.slots || [];
           // Defensive client-side past slot exclusion if booking date is today
           const todayStr = new Date().toISOString().split("T")[0];
@@ -214,6 +290,7 @@ function DoctorMatchingContent() {
               : "Could not retrieve doctor schedule availability."
           );
           setAvailableSlots([]);
+          setAvailabilityInfo(null);
         }
       })
       .finally(() => {
@@ -232,6 +309,7 @@ function DoctorMatchingContent() {
     setSelectedSlot(null);
     setBookingError(null);
     setBookingSuccess(false);
+    setAvailabilityInfo(null);
   };
 
   const handleCloseSlotSelection = () => {
@@ -239,6 +317,7 @@ function DoctorMatchingContent() {
     setSelectedSlot(null);
     setBookingError(null);
     setBookingSuccess(false);
+    setAvailabilityInfo(null);
   };
 
   const handleConfirmBooking = async () => {
@@ -330,6 +409,134 @@ function DoctorMatchingContent() {
     );
   }
 
+  // 1b. Hospital Selection Required State
+  if (needsHospitalSelection) {
+    return (
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div className="space-y-1.5">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-100 text-sky-800 text-xs font-semibold">
+            <Building2 size={14} />
+            Healthcare Facility Selection
+          </div>
+          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
+            Choose a Healthcare Facility
+          </h1>
+          <p className="text-sm text-slate-600">
+            Doctor recommendations, clinical matching, and appointment availability are specific to each facility. Please select your preferred hospital or medical clinic:
+          </p>
+        </div>
+
+        {isLoadingHospitals ? (
+          <div className="p-12 text-center space-y-3 bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <div className="inline-flex p-3 rounded-full bg-sky-50 text-sky-600 animate-spin">
+              <Activity size={24} />
+            </div>
+            <p className="text-sm text-slate-600 font-medium">
+              Loading available hospital facilities...
+            </p>
+          </div>
+        ) : hospitalsError ? (
+          <div className="p-6 rounded-2xl bg-white border border-rose-200 shadow-sm space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertCircle size={20} className="text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold text-rose-900">
+                  Unable to Load Facilities
+                </h3>
+                <p className="text-xs text-rose-700">{hospitalsError}</p>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={loadHospitals}
+              className="text-xs gap-1.5"
+            >
+              <RotateCcw size={13} />
+              Retry Facilities
+            </Button>
+          </div>
+        ) : hospitals.length === 0 ? (
+          <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center space-y-3 shadow-sm">
+            <Building2 size={28} className="text-slate-400 mx-auto" />
+            <h3 className="text-base font-bold text-slate-900">
+              No Active Facilities Found
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              No hospital facilities are currently registered or active in the network. Please contact support.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3.5" role="radiogroup" aria-label="Available Healthcare Facilities">
+            {hospitals.map((hosp) => {
+              const isSelected = selectedHospitalId === hosp.id;
+              return (
+                <div
+                  key={hosp.id}
+                  onClick={() => handleSelectHospital(hosp.id)}
+                  className={`p-4 md:p-5 rounded-2xl border-2 transition-all cursor-pointer bg-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 ${
+                    isSelected
+                      ? "border-sky-500 bg-sky-50/40 shadow-md ring-2 ring-sky-500/20"
+                      : "border-slate-200 hover:border-sky-300 hover:shadow-sm"
+                  }`}
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-slate-900 text-base">
+                        {hosp.name}
+                      </h3>
+                      {hosp.code && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-mono">
+                          {hosp.code}
+                        </span>
+                      )}
+                    </div>
+                    {hosp.address && (
+                      <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                        <MapPin size={13} className="text-slate-400 shrink-0" />
+                        <span>{hosp.address}</span>
+                      </p>
+                    )}
+                    {hosp.phone && (
+                      <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                        <PhoneCall size={13} className="text-slate-400 shrink-0" />
+                        <span>{hosp.phone}</span>
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    className="shrink-0 font-semibold gap-1.5"
+                    variant={isSelected ? "default" : "outline"}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectHospital(hosp.id);
+                    }}
+                  >
+                    {isSelected ? "Selected" : "Select Facility"}
+                    <ArrowRight size={14} />
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="pt-2 flex justify-between items-center text-xs text-slate-500">
+          <Link
+            href="/patient/find-care"
+            className="hover:text-slate-800 underline inline-flex items-center gap-1"
+          >
+            ← Back to Triage Intake
+          </Link>
+          <span className="text-[11px] text-slate-400">
+            CareRoute-X Multi-Hospital Directory
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   // 2. Missing Session State
   if (errorMessage === "NO_SESSION") {
     return (
@@ -359,6 +566,10 @@ function DoctorMatchingContent() {
 
   // 3. Error State
   if (errorMessage) {
+    const isHospitalRelated =
+      errorMessage.toLowerCase().includes("hospital") ||
+      errorMessage.toLowerCase().includes("facility");
+
     return (
       <div className="max-w-2xl mx-auto p-6 rounded-2xl bg-white border border-rose-200 shadow-sm space-y-4">
         <div className="flex items-start gap-3">
@@ -370,7 +581,20 @@ function DoctorMatchingContent() {
             <p className="text-sm text-rose-700">{errorMessage}</p>
           </div>
         </div>
-        <div className="pt-2 flex items-center gap-3">
+        <div className="pt-2 flex flex-wrap items-center gap-3">
+          {isHospitalRelated && (
+            <Button
+              size="sm"
+              onClick={() => {
+                loadHospitals();
+                setNeedsHospitalSelection(true);
+              }}
+              className="gap-2 text-xs"
+            >
+              <Building2 size={14} />
+              Select Healthcare Facility
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={() => window.location.reload()}
@@ -497,9 +721,21 @@ function DoctorMatchingContent() {
                 `No active physicians currently match the required clinical specialty (${response?.applied_specialty_name || "Requested Specialty"}) in this hospital facility.`}
             </p>
           </div>
-          <div className="pt-2 flex justify-center gap-3">
+          <div className="pt-2 flex flex-wrap justify-center gap-3">
+            <Button
+              size="md"
+              variant="outline"
+              className="text-xs gap-1.5"
+              onClick={() => {
+                loadHospitals();
+                setNeedsHospitalSelection(true);
+              }}
+            >
+              <Building2 size={14} />
+              Choose Different Facility
+            </Button>
             <Link href="/patient/find-care">
-              <Button size="md" variant="outline" className="text-xs">
+              <Button size="md" variant="ghost" className="text-xs">
                 Start New Triage
               </Button>
             </Link>
@@ -517,6 +753,11 @@ function DoctorMatchingContent() {
     primaryDoc.doctor,
     response?.applied_specialty_name
   );
+
+  const selectedFacilityName =
+    hospitals.find((h) => h.id === (response?.applied_hospital_id || selectedHospitalId))?.name ||
+    primaryDoc.doctor.hospital?.name ||
+    "Selected Medical Facility";
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
@@ -536,6 +777,29 @@ function DoctorMatchingContent() {
           </span>
           , considering schedule availability, queue load, and experience.
         </p>
+      </div>
+
+      {/* Selected Facility Status Bar */}
+      <div className="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/90 rounded-xl text-xs shadow-xs">
+        <div className="flex items-center gap-2 text-slate-700">
+          <Building2 size={16} className="text-sky-600 shrink-0" />
+          <span>
+            Selected Facility:{" "}
+            <strong className="text-slate-900 font-semibold">
+              {selectedFacilityName}
+            </strong>
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            loadHospitals();
+            setNeedsHospitalSelection(true);
+          }}
+          className="text-xs font-semibold text-sky-600 hover:text-sky-700 hover:underline flex items-center gap-1 cursor-pointer"
+        >
+          Change Facility
+        </button>
       </div>
 
       {/* High Urgency Clinical Notice (Non-Emergency) */}
@@ -872,48 +1136,80 @@ function DoctorMatchingContent() {
                       <p className="mt-0.5 text-amber-700">{slotsError}</p>
                     </div>
                   </div>
-                ) : availableSlots.length === 0 ? (
+                ) : availabilityInfo?.schedule_configured === false ? (
                   <div className="p-6 text-center space-y-1.5 bg-slate-50 rounded-xl border border-slate-100">
                     <Calendar size={22} className="text-slate-400 mx-auto" />
                     <p className="text-xs font-semibold text-slate-700">
-                      No open slots for this date
+                      No consultation schedule configured
                     </p>
                     <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
-                      All consultation windows on {bookingDate} are booked or unavailable. Please choose another date.
+                      Dr. {selectedDoctorForBooking?.doctor.profile.full_name || "this physician"} has not yet had consultation hours configured by clinic administration.
+                    </p>
+                  </div>
+                ) : availabilityInfo?.has_schedule === false ? (
+                  <div className="p-6 text-center space-y-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <Calendar size={22} className="text-slate-400 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-700">
+                      No consultations scheduled for this date
+                    </p>
+                    <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                      This physician is not scheduled for outpatient consultations on {formatAppointmentDate(bookingDate)}. Please select another day.
+                    </p>
+                  </div>
+                ) : availableSlots.length === 0 || !availableSlots.some((s) => s.is_available) ? (
+                  <div className="p-6 text-center space-y-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                    <Calendar size={22} className="text-slate-400 mx-auto" />
+                    <p className="text-xs font-semibold text-slate-700">
+                      All consultation windows booked
+                    </p>
+                    <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                      All consultation windows on {formatAppointmentDate(bookingDate)} are fully booked or have already passed. Please choose another date.
                     </p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
                     {availableSlots.map((slot, idx) => {
                       const isSelected = selectedSlot?.start_time === slot.start_time;
+                      const isSlotAvailable = slot.is_available;
                       return (
                         <button
                           key={`${slot.start_time}-${idx}`}
                           type="button"
                           onClick={() => {
+                            if (!isSlotAvailable) return;
                             setSelectedSlot(slot);
                             setBookingError(null);
                           }}
-                          disabled={isBooking}
+                          disabled={isBooking || !isSlotAvailable}
                           className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
-                            isSelected
+                            !isSlotAvailable
+                              ? "border-slate-100 bg-slate-100/60 opacity-50 cursor-not-allowed"
+                              : isSelected
                               ? "border-sky-600 bg-sky-50 ring-2 ring-sky-500/20 shadow-sm"
                               : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/70"
                           }`}
                         >
                           <span
                             className={`text-xs font-bold ${
-                              isSelected ? "text-sky-900" : "text-slate-800"
+                              !isSlotAvailable
+                                ? "text-slate-400"
+                                : isSelected
+                                ? "text-sky-900"
+                                : "text-slate-800"
                             }`}
                           >
                             {formatTimeSlot(slot.start_time)}
                           </span>
                           <span
                             className={`text-[10px] mt-0.5 ${
-                              isSelected ? "text-sky-700" : "text-slate-400"
+                              !isSlotAvailable
+                                ? "text-rose-500 font-medium"
+                                : isSelected
+                                ? "text-sky-700 font-medium"
+                                : "text-slate-400"
                             }`}
                           >
-                            to {formatTimeSlot(slot.end_time)}
+                            {!isSlotAvailable ? "Booked" : `to ${formatTimeSlot(slot.end_time)}`}
                           </span>
                         </button>
                       );

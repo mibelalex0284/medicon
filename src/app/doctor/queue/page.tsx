@@ -167,7 +167,9 @@ export default function DoctorQueuePage() {
   ).length;
 
   const doctorName = doctorProfile?.profile?.full_name || "Doctor";
-  const roomName = "Room 204";
+  const roomName = doctorProfile?.department?.name
+    ? `${doctorProfile.department.name} Station`
+    : "Clinic Station";
 
   return (
     <div className="space-y-6">

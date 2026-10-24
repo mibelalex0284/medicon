@@ -75,6 +75,16 @@ from app.schemas.triage import (
     TriageSessionCreate,
     TriageSessionResponse,
 )
+from app.schemas.admin_settings import (
+    RegistrationStatusResponse,
+    AdminSettingsResponse,
+    UpdatePatientSelfRegistrationRequest,
+    AdminCreatePatientRequest,
+    AdminOnboardDoctorRequest,
+    AdminAccountCreatedResponse,
+    AdminUpdateDoctorStatusRequest,
+    AdminDoctorLifecycleResponse,
+)
 
 __all__ = [
     "HospitalBase",
@@ -129,4 +139,13 @@ __all__ = [
     "TriageAnswerCreate",
     "TriageAnswerResponse",
     "TriageAssessmentResponse",
+    "RegistrationStatusResponse",
+    "AdminSettingsResponse",
+    "UpdatePatientSelfRegistrationRequest",
+    "AdminCreatePatientRequest",
+    "AdminOnboardDoctorRequest",
+    "AdminAccountCreatedResponse",
+    "AdminUpdateDoctorStatusRequest",
+    "AdminDoctorLifecycleResponse",
 ]
+

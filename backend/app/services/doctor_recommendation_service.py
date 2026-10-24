@@ -7,6 +7,7 @@ from app.core.exceptions import (
     ForbiddenError,
     NotFoundError,
 )
+from app.models.profile import Profile
 from app.models.triage_assessment import TriageAssessment, TriageUrgency
 from app.ranking.deterministic import (
     DeterministicDoctorRankingProvider,
@@ -47,13 +48,18 @@ class DoctorRecommendationService:
         current_user: AuthenticatedUser,
     ) -> DoctorRecommendationResponse:
         # 1. Resolve & Validate Hospital Boundary (Tenant Isolation)
-        hospital_id = request.hospital_id or current_user.hospital_id
+        # Resolution Order:
+        # 1. An explicitly selected hospital associated with the current recommendation request.
+        # 2. A valid hospital affiliation on the authenticated user's application profile.
+        # 3. If neither exists, return structured error indicating hospital selection is required.
+        hospital_id = request.hospital_id
         if not hospital_id:
-            # Fallback for patients without explicit hospital_id in token: query patient profile
-            if current_user.is_patient:
-                patient = patient_repo.get_by_auth_user_id(db, current_user.id)
-                if patient and patient.profile and patient.profile.hospital_id:
-                    hospital_id = patient.profile.hospital_id
+            if current_user.hospital_id:
+                hospital_id = current_user.hospital_id
+            elif current_user.is_patient:
+                profile = db.query(Profile).filter(Profile.auth_user_id == current_user.id).first()
+                if profile and profile.hospital_id:
+                    hospital_id = profile.hospital_id
 
         if not hospital_id:
             raise ConflictError(
@@ -61,22 +67,22 @@ class DoctorRecommendationService:
                 code="MISSING_HOSPITAL_CONTEXT",
             )
 
-        # Ensure hospital exists
+        # Ensure hospital exists and is active
         hospital = hospital_repo.get(db, hospital_id)
-        if not hospital:
+        if not hospital or not hospital.is_active:
             raise NotFoundError(
-                message=f"Hospital with id '{hospital_id}' not found",
+                message=f"Hospital with id '{hospital_id}' not found or is currently inactive",
                 code="HOSPITAL_NOT_FOUND",
             )
 
         # Cross-hospital boundary check: patient cannot request doctors from a different hospital
+        # if their profile is explicitly affiliated with a registered hospital
         if current_user.is_patient:
-            patient = patient_repo.get_by_auth_user_id(db, current_user.id)
+            profile = db.query(Profile).filter(Profile.auth_user_id == current_user.id).first()
             if (
-                patient
-                and patient.profile
-                and patient.profile.hospital_id
-                and patient.profile.hospital_id != hospital_id
+                profile
+                and profile.hospital_id
+                and profile.hospital_id != hospital_id
             ):
                 raise ForbiddenError(
                     message="Access forbidden: cannot request recommendations outside your registered hospital",

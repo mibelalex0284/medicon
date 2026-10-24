@@ -44,3 +44,21 @@ class DoctorScheduleResponse(DoctorScheduleBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DoctorScheduleDayInput(BaseModel):
+    day_of_week: int = Field(..., ge=0, le=6, description="0=Monday, 6=Sunday")
+    start_time: time
+    end_time: time
+    slot_duration_minutes: int = Field(default=30, gt=0, le=120)
+    is_active: bool = True
+
+    @model_validator(mode="after")
+    def validate_time_range(self) -> "DoctorScheduleDayInput":
+        if self.end_time <= self.start_time:
+            raise ValueError("end_time must be strictly later than start_time")
+        return self
+
+
+class DoctorScheduleBatchUpdate(BaseModel):
+    schedules: list[DoctorScheduleDayInput]

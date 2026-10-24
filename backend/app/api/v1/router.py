@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 from app.api.v1 import (
+    admin,
     appointments,
+    auth,
     departments,
     doctors,
     health,
@@ -12,6 +14,12 @@ from app.api.v1 import (
 )
 
 api_router = APIRouter()
+
+# Authentication & Identity
+api_router.include_router(auth.router)
+
+# Administrative Controls & System Settings
+api_router.include_router(admin.router)
 
 # Health & System
 api_router.include_router(health.router)

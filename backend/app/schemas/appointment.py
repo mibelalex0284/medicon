@@ -15,6 +15,9 @@ class DoctorAvailabilityResponse(BaseModel):
     hospital_id: str
     appointment_date: date
     slot_duration_minutes: int
+    has_schedule: bool = Field(default=True, description="Whether doctor has working hours configured on this weekday")
+    schedule_configured: bool = Field(default=True, description="Whether doctor has any working schedule configured in the system")
+    is_fully_booked: bool = Field(default=False, description="Whether all slots for this day are booked")
     slots: List[AvailableSlot]
 
 

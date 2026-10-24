@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Settings,
   Clock,
@@ -11,8 +11,12 @@ import {
   CheckCircle2,
   Building2,
   RefreshCw,
+  UserCheck,
+  UserX,
+  ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { authService } from "@/services/auth";
 
 export default function AdminSettingsPage() {
   const [openingTime, setOpeningTime] = useState("08:00");
@@ -28,6 +32,61 @@ export default function AdminSettingsPage() {
   const [boardRefreshIntervalSec, setBoardRefreshIntervalSec] = useState(10);
 
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Patient Self-Registration admin setting (server persisted)
+  const [patientSelfRegistration, setPatientSelfRegistration] = useState<boolean>(true);
+  const [isRegistrationLoading, setIsRegistrationLoading] = useState<boolean>(true);
+  const [registrationUpdateMsg, setRegistrationUpdateMsg] = useState<string | null>(null);
+  const [registrationError, setRegistrationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    authService
+      .getAdminSettings()
+      .then((data) => {
+        if (isMounted) {
+          setPatientSelfRegistration(data.patient_self_registration_enabled);
+          setIsRegistrationLoading(false);
+        }
+      })
+      .catch(() => {
+        authService
+          .getRegistrationStatus()
+          .then((s) => {
+            if (isMounted) {
+              setPatientSelfRegistration(s.patient_self_registration_enabled);
+              setIsRegistrationLoading(false);
+            }
+          })
+          .catch(() => {
+            if (isMounted) setIsRegistrationLoading(false);
+          });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleTogglePatientRegistration = async (newValue: boolean) => {
+    setRegistrationError(null);
+    setRegistrationUpdateMsg(null);
+    setIsRegistrationLoading(true);
+    try {
+      await authService.updatePatientSelfRegistration(newValue);
+      setPatientSelfRegistration(newValue);
+      setRegistrationUpdateMsg(
+        `Patient Self-Registration is now ${newValue ? "ENABLED" : "DISABLED"}. Persisted in PostgreSQL database.`
+      );
+      setTimeout(() => setRegistrationUpdateMsg(null), 4000);
+    } catch (err: any) {
+      setRegistrationError(
+        err.message || "Failed to update registration setting. Ensure you have authorized administrator access."
+      );
+    } finally {
+      setIsRegistrationLoading(false);
+    }
+  };
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,10 +119,10 @@ export default function AdminSettingsPage() {
             <span>Clinic Configuration</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mt-1">
-            System & Queue Threshold Settings
+            System & Security Settings
           </h1>
           <p className="text-sm text-slate-600 mt-0.5">
-            Configure clinic operating hours, triage safety protocols, and real-time queue escalation thresholds.
+            Configure access governance, registration policies, clinic operating hours, and triage safety thresholds.
           </p>
         </div>
 
@@ -74,6 +133,116 @@ export default function AdminSettingsPage() {
           <Save size={15} />
           <span>Save Configurations</span>
         </button>
+      </div>
+
+      {/* Patient Self-Registration Administrative Control Section */}
+      <div
+        id="patient-registration-setting-card"
+        data-testid="patient-registration-setting-card"
+        className="bg-white p-6 rounded-xl border border-slate-200/90 shadow-xs space-y-4"
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className={cn(
+              "p-2 rounded-lg transition-colors",
+              patientSelfRegistration ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+            )}>
+              <ShieldCheck size={18} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-base text-slate-900">
+                  Patient Self-Registration
+                </h3>
+                <span
+                  id="registration-status-badge"
+                  data-testid="registration-status-badge"
+                  className={cn(
+                    "inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold tracking-tight border",
+                    patientSelfRegistration
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : "bg-amber-50 text-amber-700 border-amber-200"
+                  )}
+                >
+                  {patientSelfRegistration ? (
+                    <>
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      Enabled
+                    </>
+                  ) : (
+                    <>
+                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                      Disabled
+                    </>
+                  )}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Controls whether new patients can publicly create outpatient accounts through the login and registration portals.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+          <div className="space-y-1 text-xs text-slate-600 max-w-xl">
+            <p>
+              When <span className="font-semibold text-slate-800">Enabled</span>, public visitors can register as patients via the login page.
+            </p>
+            <p>
+              When <span className="font-semibold text-slate-800">Disabled</span>, public registration options are hidden and direct API creation requests are rejected by FastAPI. Clinic administrators can still register patients and onboard physicians directly.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              id="toggle-registration-enabled-btn"
+              data-testid="toggle-registration-enabled-btn"
+              onClick={() => handleTogglePatientRegistration(true)}
+              disabled={isRegistrationLoading || patientSelfRegistration}
+              className={cn(
+                "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                patientSelfRegistration
+                  ? "bg-emerald-600 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              <UserCheck size={14} />
+              <span>Enabled</span>
+            </button>
+            <button
+              type="button"
+              id="toggle-registration-disabled-btn"
+              data-testid="toggle-registration-disabled-btn"
+              onClick={() => handleTogglePatientRegistration(false)}
+              disabled={isRegistrationLoading || !patientSelfRegistration}
+              className={cn(
+                "px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5",
+                !patientSelfRegistration
+                  ? "bg-amber-600 text-white shadow-xs"
+                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              )}
+            >
+              <UserX size={14} />
+              <span>Disabled</span>
+            </button>
+          </div>
+        </div>
+
+        {registrationUpdateMsg && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 font-semibold flex items-center gap-2 animate-in fade-in">
+            <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+            <span>{registrationUpdateMsg}</span>
+          </div>
+        )}
+
+        {registrationError && (
+          <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 font-semibold flex items-center gap-2 animate-in fade-in">
+            <ShieldAlert size={15} className="text-rose-600 shrink-0" />
+            <span>{registrationError}</span>
+          </div>
+        )}
       </div>
 
       {savedSuccess && (
@@ -93,6 +262,7 @@ export default function AdminSettingsPage() {
             <div>
               <h3 className="font-bold text-base text-slate-900">
                 Clinic Operating Schedule
+
               </h3>
               <p className="text-xs text-slate-500">
                 Standard daily service hours across all 4 outpatient wings.

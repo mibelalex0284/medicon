@@ -46,7 +46,7 @@ class DoctorRepository(BaseRepository[Doctor, DoctorCreate, DoctorUpdate]):
         hospital_id: Optional[str] = None,
         specialty_id: Optional[str] = None,
         department_id: Optional[str] = None,
-        is_active: bool = True,
+        is_active: Optional[bool] = None,
         skip: int = 0,
         limit: int = 100,
     ) -> List[Doctor]:
@@ -58,8 +58,10 @@ class DoctorRepository(BaseRepository[Doctor, DoctorCreate, DoctorUpdate]):
                 joinedload(Doctor.department),
                 joinedload(Doctor.specialties).joinedload(DoctorSpecialty.specialty),
             )
-            .filter(Doctor.is_active == is_active)
         )
+
+        if is_active is not None:
+            query = query.filter(Doctor.is_active == is_active)
 
         if hospital_id:
             query = query.filter(Doctor.hospital_id == hospital_id)

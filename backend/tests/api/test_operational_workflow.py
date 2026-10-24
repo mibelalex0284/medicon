@@ -56,8 +56,8 @@ def test_complete_outpatient_operational_workflow(
             doctor_id=doc.id,
             hospital_id=hosp.id,
             day_of_week=today.weekday(),
-            start_time=datetime.time(8, 0),
-            end_time=datetime.time(18, 0),
+            start_time=datetime.time(0, 0),
+            end_time=datetime.time(23, 59),
             slot_duration_minutes=30,
         ),
     )
@@ -89,13 +89,14 @@ def test_complete_outpatient_operational_workflow(
     assert len(slots) > 0
 
     # Step 2: Patient books appointment
+    first_avail = next(s for s in slots if s["is_available"])
     book_payload = {
         "patient_id": patient.id,
         "doctor_id": doc.id,
         "hospital_id": hosp.id,
         "appointment_date": today.isoformat(),
-        "scheduled_start": "09:00:00",
-        "scheduled_end": "09:30:00",
+        "scheduled_start": first_avail["start_time"],
+        "scheduled_end": first_avail["end_time"],
         "reason": "Routine Checkup",
     }
     res_book = client.post("/api/v1/appointments", json=book_payload, headers=patient_headers)
@@ -192,8 +193,8 @@ def test_cross_patient_booking_and_checkin_forbidden(
             doctor_id=doc.id,
             hospital_id=hosp.id,
             day_of_week=today.weekday(),
-            start_time=datetime.time(8, 0),
-            end_time=datetime.time(18, 0),
+            start_time=datetime.time(0, 0),
+            end_time=datetime.time(23, 59),
         ),
     )
 
@@ -227,6 +228,9 @@ def test_cross_patient_booking_and_checkin_forbidden(
         PatientCreate(profile_id=p2_prof.id, date_of_birth=datetime.date(1995, 1, 1)),
     )
 
+    res_avail = client.get(f"/api/v1/doctors/{doc.id}/availability?appointment_date={today.isoformat()}")
+    first_avail = next(s for s in res_avail.json()["slots"] if s["is_available"])
+
     # 1. Patient 1 attempts to book using Patient 2's ID -> Forbidden
     res_fraud_book = client.post(
         "/api/v1/appointments",
@@ -235,8 +239,8 @@ def test_cross_patient_booking_and_checkin_forbidden(
             "doctor_id": doc.id,
             "hospital_id": hosp.id,
             "appointment_date": today.isoformat(),
-            "scheduled_start": "10:00:00",
-            "scheduled_end": "10:15:00",
+            "scheduled_start": first_avail["start_time"],
+            "scheduled_end": first_avail["end_time"],
         },
         headers=patient_headers,
     )
@@ -251,8 +255,8 @@ def test_cross_patient_booking_and_checkin_forbidden(
             "doctor_id": doc.id,
             "hospital_id": hosp.id,
             "appointment_date": today.isoformat(),
-            "scheduled_start": "10:00:00",
-            "scheduled_end": "10:15:00",
+            "scheduled_start": first_avail["start_time"],
+            "scheduled_end": first_avail["end_time"],
         },
         headers=patient_headers,
     )
@@ -301,8 +305,8 @@ def test_doctor_cannot_operate_another_doctors_queue(
             doctor_id=d1.id,
             hospital_id=hosp.id,
             day_of_week=today.weekday(),
-            start_time=datetime.time(8, 0),
-            end_time=datetime.time(18, 0),
+            start_time=datetime.time(0, 0),
+            end_time=datetime.time(23, 59),
         ),
     )
 
@@ -337,6 +341,9 @@ def test_doctor_cannot_operate_another_doctors_queue(
         PatientCreate(profile_id=p_prof.id, date_of_birth=datetime.date(1990, 1, 1)),
     )
 
+    res_avail = client.get(f"/api/v1/doctors/{d1.id}/availability?appointment_date={today.isoformat()}")
+    first_avail = next(s for s in res_avail.json()["slots"] if s["is_available"])
+
     # Book and check in with Doctor 1
     res_book = client.post(
         "/api/v1/appointments",
@@ -345,8 +352,8 @@ def test_doctor_cannot_operate_another_doctors_queue(
             "doctor_id": d1.id,
             "hospital_id": hosp.id,
             "appointment_date": today.isoformat(),
-            "scheduled_start": "11:00:00",
-            "scheduled_end": "11:15:00",
+            "scheduled_start": first_avail["start_time"],
+            "scheduled_end": first_avail["end_time"],
         },
         headers=patient_headers,
     )

@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   Home,
@@ -34,7 +35,43 @@ export default function PatientLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, logout, loginAsRole } = useAuth();
+  const { user, isLoading, logout, loginAsRole } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (!user) {
+        router.replace("/login");
+      } else if (user.role === "unregistered") {
+        router.replace("/account-setup");
+      } else if (user.role !== "patient") {
+        if (user.role === "doctor") router.replace("/doctor/dashboard");
+        else if (user.role === "admin") router.replace("/admin/dashboard");
+        else router.replace("/login");
+      }
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading || !user || user.role !== "patient") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-3 border-sky-600 border-t-transparent" />
+          <p className="text-xs text-slate-500 font-medium tracking-wide">
+            Verifying patient workspace access...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const initials = (user.name || user.email || "PT")
+    .split(" ")
+    .map((part) => part[0])
+    .filter(Boolean)
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row pb-20 md:pb-0">
@@ -62,14 +99,14 @@ export default function PatientLayout({
           <div className="px-5 py-3.5 bg-slate-50 border-b border-slate-100">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center font-bold text-sm">
-                SJ
+                {initials}
               </div>
               <div className="overflow-hidden">
                 <p className="text-sm font-semibold text-slate-800 truncate">
-                  {user?.name || "Sarah Jenkins"}
+                  {user.name || user.email || "Patient"}
                 </p>
                 <p className="text-[11px] text-slate-500 font-mono">
-                  MRN: CRX-9281
+                  {user.email}
                 </p>
               </div>
             </div>
@@ -117,13 +154,15 @@ export default function PatientLayout({
             </div>
 
             <div className="pt-2 flex items-center justify-between text-xs text-slate-500">
-              <button
-                onClick={() => loginAsRole("doctor")}
-                className="hover:text-slate-900 hover:underline flex items-center gap-1"
-              >
-                <Stethoscope size={13} />
-                Doctor View
-              </button>
+              {process.env.NODE_ENV === "development" && (
+                <button
+                  onClick={() => loginAsRole("doctor")}
+                  className="hover:text-slate-900 hover:underline flex items-center gap-1"
+                >
+                  <Stethoscope size={13} />
+                  Doctor View
+                </button>
+              )}
               <button
                 onClick={logout}
                 className="text-rose-600 hover:underline flex items-center gap-1"

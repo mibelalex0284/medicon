@@ -10,6 +10,7 @@ from app.models.patient import Patient
 from app.models.profile import Profile, UserRole
 from app.models.queue_entry import QueueEntry, QueueStatus
 from app.models.specialty import Specialty
+from app.models.system_setting import SystemSetting
 from app.models.triage_answer import TriageAnswer
 from app.models.triage_assessment import TriageAssessment, TriageUrgency
 from app.models.triage_message import TriageMessage
@@ -40,5 +41,6 @@ __all__ = [
     "TriageAnswer",
     "TriageAssessment",
     "TriageUrgency",
+    "SystemSetting",
 ]
 

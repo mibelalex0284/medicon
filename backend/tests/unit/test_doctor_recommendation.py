@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models.profile import UserRole
 from app.models.triage_assessment import TriageUrgency
 from app.models.triage_session import TriageSession, TriageSessionStatus
@@ -1118,5 +1118,256 @@ def test_low_and_moderate_urgency_pathways(db_session: Session, rec_setup_data):
         assert resp.urgency == urg
         assert resp.total_eligible_doctors > 0
         assert len(resp.recommendations) > 0
+
+
+# ============================================================================
+# PHASE 4 HOSPITAL CONTEXT & RESOLUTION REGRESSION TESTS
+# ============================================================================
+
+
+def test_recommendations_when_valid_hospital_id_supplied(db_session: Session, rec_setup_data):
+    """When a valid hospital ID is supplied explicitly, recommendations are resolved for that facility."""
+    from app.core.dependencies import AuthenticatedUser
+    data = rec_setup_data
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=None,
+    )
+    req = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        specialty_id=data["cardio"].id,
+    )
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+    assert resp.status == "SUCCESS"
+    assert resp.applied_hospital_id == data["hosp_a"].id
+    assert len(resp.recommendations) >= 1
+    for item in resp.recommendations:
+        assert item.doctor.hospital_id == data["hosp_a"].id
+
+
+def test_recommendations_when_profile_provides_hospital_id(db_session: Session, rec_setup_data):
+    """When request omits hospital_id, resolves to the hospital from user's application profile."""
+    from app.core.dependencies import AuthenticatedUser
+    data = rec_setup_data
+    # Patient profile has hospital_id = hosp_a
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=None,  # Not in token
+    )
+    req = DoctorRecommendationRequest(
+        hospital_id=None,
+        specialty_id=data["cardio"].id,
+    )
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+    assert resp.status == "SUCCESS"
+    assert resp.applied_hospital_id == data["hosp_a"].id
+    assert len(resp.recommendations) >= 1
+
+
+def test_missing_hospital_context_raises_missing_hospital_context_error(db_session: Session, rec_setup_data):
+    """When neither request nor profile has a hospital affiliation, raises ConflictError with MISSING_HOSPITAL_CONTEXT."""
+    from app.core.dependencies import AuthenticatedUser
+    from app.models.profile import Profile
+    data = rec_setup_data
+
+    # Unaffiliated patient with no hospital in profile
+    unaffiliated_prof = Profile(
+        auth_user_id="unaffiliated-pat-01",
+        role=UserRole.PATIENT,
+        full_name="Unaffiliated Patient",
+        email="unaffiliated@care.org",
+        hospital_id=None,
+        is_active=True,
+    )
+    db_session.add(unaffiliated_prof)
+    db_session.commit()
+
+    user = AuthenticatedUser(
+        id=unaffiliated_prof.auth_user_id,
+        role="patient",
+        hospital_id=None,
+    )
+    req = DoctorRecommendationRequest(
+        hospital_id=None,
+        specialty_id=data["cardio"].id,
+    )
+
+    with pytest.raises(ConflictError) as exc_info:
+        doctor_recommendation_service.recommend_doctors(db_session, req, user)
+
+    assert exc_info.value.code == "MISSING_HOSPITAL_CONTEXT"
+    assert "hospital" in exc_info.value.message.lower()
+
+
+def test_invalid_or_inactive_hospital_id_raises_not_found(db_session: Session, rec_setup_data):
+    """Supplying a non-existent or inactive hospital ID raises NotFoundError."""
+    from app.core.dependencies import AuthenticatedUser
+    data = rec_setup_data
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=None,
+    )
+    req = DoctorRecommendationRequest(
+        hospital_id="non-existent-facility-id",
+        specialty_id=data["cardio"].id,
+    )
+    with pytest.raises(NotFoundError) as exc_info:
+        doctor_recommendation_service.recommend_doctors(db_session, req, user)
+
+    assert exc_info.value.code == "HOSPITAL_NOT_FOUND"
+
+
+def test_unauthorized_cross_hospital_id_raises_forbidden(db_session: Session, rec_setup_data):
+    """Patient with a registered hospital profile cannot request doctors from a different hospital facility."""
+    from app.core.dependencies import AuthenticatedUser
+    data = rec_setup_data
+    # Patient is registered with hosp_a
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=None,
+    )
+    # Tries to request hosp_b
+    req = DoctorRecommendationRequest(
+        hospital_id=data["hosp_b"].id,
+        specialty_id=data["cardio"].id,
+    )
+    with pytest.raises(ForbiddenError) as exc_info:
+        doctor_recommendation_service.recommend_doctors(db_session, req, user)
+
+    assert exc_info.value.code == "FORBIDDEN_CROSS_HOSPITAL_ACCESS"
+
+
+def test_patient_selecting_hospital_and_retrying_recommendations(db_session: Session, rec_setup_data):
+    """An unaffiliated patient who initially lacks hospital context successfully selects a facility and gets recommendations."""
+    from app.core.dependencies import AuthenticatedUser
+    from app.models.profile import Profile
+    data = rec_setup_data
+
+    prof = Profile(
+        auth_user_id="unaffiliated-retry-pat",
+        role=UserRole.PATIENT,
+        full_name="Retry Patient",
+        email="retry@care.org",
+        hospital_id=None,
+        is_active=True,
+    )
+    db_session.add(prof)
+    db_session.commit()
+
+    user = AuthenticatedUser(
+        id=prof.auth_user_id,
+        role="patient",
+        hospital_id=None,
+    )
+
+    # 1. Initial attempt without hospital fails with MISSING_HOSPITAL_CONTEXT
+    req_initial = DoctorRecommendationRequest(
+        hospital_id=None,
+        specialty_id=data["cardio"].id,
+    )
+    with pytest.raises(ConflictError) as exc_info:
+        doctor_recommendation_service.recommend_doctors(db_session, req_initial, user)
+    assert exc_info.value.code == "MISSING_HOSPITAL_CONTEXT"
+
+    # 2. Patient selects hosp_a and retries request
+    req_retry = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        specialty_id=data["cardio"].id,
+    )
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req_retry, user)
+    assert resp.status == "SUCCESS"
+    assert resp.applied_hospital_id == data["hosp_a"].id
+    assert len(resp.recommendations) > 0
+
+
+def test_preservation_of_triage_session_context(db_session: Session, rec_setup_data):
+    """Triage assessment specialty and rationale are faithfully preserved across hospital selection."""
+    from app.core.dependencies import AuthenticatedUser
+    data = rec_setup_data
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=None,
+    )
+
+    session = TriageSession(
+        patient_id=data["patient"].id,
+        original_input="Chest tightness and irregular palpitation",
+        confirmed_input="Chest tightness and irregular palpitation",
+        language="en",
+        status=TriageSessionStatus.COMPLETED,
+    )
+    db_session.add(session)
+    db_session.commit()
+
+    assessment = TriageAssessment(
+        triage_session_id=session.id,
+        urgency=TriageUrgency.MODERATE,
+        confidence=0.92,
+        needs_escalation=False,
+        red_flag_detected=False,
+        recommended_specialty_id=data["cardio"].id,
+        rationale="Cardiovascular symptoms warrant specialized evaluation.",
+    )
+    db_session.add(assessment)
+    db_session.commit()
+
+    req = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        triage_session_id=session.id,
+    )
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+    assert resp.applied_specialty_id == data["cardio"].id
+    assert resp.applied_specialty_name == "Cardiology"
+    assert resp.urgency == TriageUrgency.MODERATE
+    assert resp.is_emergency_escalation is False
+    assert len(resp.recommendations) > 0
+
+
+def test_red_flag_emergency_routing_behavior_preserved(db_session: Session, rec_setup_data):
+    """Critical red-flag symptoms trigger EMERGENCY_ESCALATION notice with emergency guidance."""
+    from app.core.dependencies import AuthenticatedUser
+    data = rec_setup_data
+    user = AuthenticatedUser(
+        id=data["patient"].profile.auth_user_id,
+        role="patient",
+        hospital_id=None,
+    )
+
+    session = TriageSession(
+        patient_id=data["patient"].id,
+        original_input="Sudden crushing chest pain radiating to left arm",
+        confirmed_input="Sudden crushing chest pain radiating to left arm",
+        language="en",
+        status=TriageSessionStatus.COMPLETED,
+    )
+    db_session.add(session)
+    db_session.commit()
+
+    assessment = TriageAssessment(
+        triage_session_id=session.id,
+        urgency=TriageUrgency.HIGH,
+        confidence=0.98,
+        needs_escalation=True,
+        red_flag_detected=True,
+        recommended_specialty_id=data["cardio"].id,
+        rationale="Classic cardiac red-flag emergency symptoms.",
+    )
+    db_session.add(assessment)
+    db_session.commit()
+
+    req = DoctorRecommendationRequest(
+        hospital_id=data["hosp_a"].id,
+        triage_session_id=session.id,
+    )
+    resp = doctor_recommendation_service.recommend_doctors(db_session, req, user)
+    assert resp.status == "EMERGENCY_ESCALATION"
+    assert resp.is_emergency_escalation is True
+    assert "emergency" in resp.escalation_notice.lower()
+
 
 

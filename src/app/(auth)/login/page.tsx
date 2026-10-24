@@ -1,26 +1,46 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
-import { UserRole } from "@/types";
+import { AuthoritativeRole } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { authService } from "@/services/auth";
 import {
   Activity,
+  AlertCircle,
   Stethoscope,
   Building2,
   UserCheck,
   ShieldCheck,
   ArrowRight,
   Lock,
+  UserPlus,
 } from "lucide-react";
 
 export default function LoginPage() {
-  const { loginAsRole } = useAuth();
-  const [selectedRole, setSelectedRole] = useState<UserRole>("patient");
+  const { loginWithCredentials, loginAsRole } = useAuth();
+  const [selectedRole, setSelectedRole] = useState<AuthoritativeRole>("patient");
   const [email, setEmail] = useState("sarah.jenkins@example.com");
   const [password, setPassword] = useState("••••••••••••");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSupabaseLive, setIsSupabaseLive] = useState(false);
+  const [isRegistrationEnabled, setIsRegistrationEnabled] = useState(false);
+
+  useEffect(() => {
+    setIsSupabaseLive(isSupabaseConfigured());
+    authService
+      .getRegistrationStatus()
+      .then((status) => {
+        setIsRegistrationEnabled(status.patient_self_registration_enabled);
+      })
+      .catch(() => {
+        setIsRegistrationEnabled(false);
+      });
+  }, []);
 
   const roleConfigs = {
     patient: {
@@ -49,17 +69,25 @@ export default function LoginPage() {
     },
   };
 
-  const handleRoleSelect = (role: UserRole) => {
+  const handleRoleSelect = (role: AuthoritativeRole) => {
     setSelectedRole(role);
     setEmail(roleConfigs[role].defaultEmail);
+    setErrorMessage(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
     setIsSubmitting(true);
-    setTimeout(() => {
-      loginAsRole(selectedRole);
-    }, 400);
+    try {
+      await loginWithCredentials(email, password);
+    } catch (err: any) {
+      setErrorMessage(
+        err.message || "Authentication failed. Please check your credentials and try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const ActiveIcon = roleConfigs[selectedRole].icon;
@@ -84,20 +112,28 @@ export default function LoginPage() {
               </div>
             </div>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-800 px-2.5 py-1 rounded-full text-slate-300 border border-slate-700">
-              <ShieldCheck size={13} className="text-emerald-400" />
-              Secure Portal
+              <ShieldCheck size={13} className={isSupabaseLive ? "text-emerald-400" : "text-amber-400"} />
+              {isSupabaseLive ? "Supabase Auth" : "Dev Mock Auth"}
             </span>
           </div>
         </div>
 
         <div className="p-6 md:p-8 space-y-6">
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-2.5 text-xs text-rose-700 animate-in fade-in duration-200">
+              <AlertCircle size={16} className="text-rose-500 shrink-0 mt-0.5" />
+              <span className="leading-relaxed">{errorMessage}</span>
+            </div>
+          )}
+
           {/* Role Tab Selector */}
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
               Select Workspace Role
             </label>
             <div className="grid grid-cols-3 gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200">
-              {(["patient", "doctor", "admin"] as UserRole[]).map((r) => {
+              {(["patient", "doctor", "admin"] as AuthoritativeRole[]).map((r) => {
                 const Icon = roleConfigs[r].icon;
                 const isSelected = selectedRole === r;
                 return (
@@ -191,37 +227,54 @@ export default function LoginPage() {
               Sign In to {selectedRole === "patient" ? "Care Portal" : `${selectedRole.toUpperCase()} Console`}
               <ArrowRight size={16} />
             </Button>
+
+            {isRegistrationEnabled && (
+              <div className="pt-2 text-center" data-testid="registration-enabled-container">
+                <Link
+                  href="/register"
+                  id="create-patient-account-link"
+                  data-testid="create-patient-account-link"
+                  className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-700 hover:text-sky-900 hover:underline py-1 px-2 rounded-lg transition-colors"
+                >
+                  <UserPlus size={14} className="text-sky-600" />
+                  <span>New patient? Create Patient Account</span>
+                </Link>
+              </div>
+            )}
           </form>
 
-          {/* Quick Demo Persona Switcher */}
-          <div className="border-t border-slate-200 pt-4">
-            <p className="text-[11px] text-slate-400 font-medium text-center uppercase tracking-wider mb-2.5">
-              Rapid Workspace Inspection
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => loginAsRole("patient")}
-                className="text-[11px] font-medium py-1.5 px-2 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-700 rounded-lg border border-slate-200 transition-colors text-center"
-              >
-                Patient View
-              </button>
-              <button
-                type="button"
-                onClick={() => loginAsRole("doctor")}
-                className="text-[11px] font-medium py-1.5 px-2 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-700 rounded-lg border border-slate-200 transition-colors text-center"
-              >
-                Doctor View
-              </button>
-              <button
-                type="button"
-                onClick={() => loginAsRole("admin")}
-                className="text-[11px] font-medium py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition-colors text-center"
-              >
-                Admin View
-              </button>
+
+          {/* Quick Demo Persona Switcher (Development Only) */}
+          {process.env.NODE_ENV === "development" && (
+            <div className="border-t border-slate-200 pt-4">
+              <p className="text-[11px] text-slate-400 font-medium text-center uppercase tracking-wider mb-2.5">
+                Development Rapid Workspace Switcher
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => loginAsRole("patient")}
+                  className="text-[11px] font-medium py-1.5 px-2 bg-slate-100 hover:bg-sky-50 hover:text-sky-700 text-slate-700 rounded-lg border border-slate-200 transition-colors text-center"
+                >
+                  Patient View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loginAsRole("doctor")}
+                  className="text-[11px] font-medium py-1.5 px-2 bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-700 rounded-lg border border-slate-200 transition-colors text-center"
+                >
+                  Doctor View
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loginAsRole("admin")}
+                  className="text-[11px] font-medium py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg border border-slate-200 transition-colors text-center"
+                >
+                  Admin View
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-center">

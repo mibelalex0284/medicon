@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { appointmentService } from "@/services/appointments";
+import { doctorService, DoctorResponse } from "@/services/doctors";
 import { Appointment } from "@/types";
 import { AppointmentStatusBadge } from "@/components/common/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -10,12 +11,18 @@ import { Calendar, Clock, MapPin, Search } from "lucide-react";
 
 export default function DoctorAppointmentsPage() {
   const [allAppointments, setAllAppointments] = useState<Appointment[]>([]);
+  const [doctorProfile, setDoctorProfile] = useState<DoctorResponse | null>(null);
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     appointmentService
       .getAllAppointments()
       .then((data) => setAllAppointments(data))
+      .catch(() => {});
+
+    doctorService
+      .getCurrentDoctor()
+      .then((doc) => setDoctorProfile(doc))
       .catch(() => {});
   }, []);
 
@@ -25,6 +32,8 @@ export default function DoctorAppointmentsPage() {
     if (filter === "completed") return a.status === "completed";
     return true;
   });
+
+  const doctorDisplayName = doctorProfile?.profile?.full_name || "your clinical station";
 
   return (
     <div className="space-y-6">
@@ -37,7 +46,7 @@ export default function DoctorAppointmentsPage() {
             Today&apos;s Appointments
           </h1>
           <p className="text-sm text-slate-500">
-            Outpatient booked roster for Dr. Anita Menon (Room 204).
+            Outpatient booked roster for {doctorDisplayName}.
           </p>
         </div>
 

@@ -1,15 +1,20 @@
 from typing import Any, Dict, Optional
 from fastapi import Depends, Header
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import decode_jwt_token
+from app.db.session import get_db
 
 
 class AuthenticatedUser(BaseModel):
-    id: str
-    role: str
+    id: str  # auth_user_id (from JWT sub)
+    role: str  # Authoritative role from Database Profile (or 'unregistered' if no profile exists)
+    profile_id: Optional[str] = None
     hospital_id: Optional[str] = None
     email: Optional[str] = None
+    is_active: bool = True
+    has_profile: bool = True
     raw_claims: Dict[str, Any] = {}
 
     @property
@@ -27,10 +32,12 @@ class AuthenticatedUser(BaseModel):
 
 def get_current_user(
     authorization: Optional[str] = Header(None, alias="Authorization"),
+    db: Session = Depends(get_db),
 ) -> AuthenticatedUser:
-    """Extracts and validates the Supabase JWT token from the Authorization header.
+    """Extracts, validates the Supabase JWT token, and resolves authoritative user identity.
     
-    Determines user identity and role from trusted token claims.
+    Validates token signature and expiration, then resolves user role and permissions
+    strictly from trusted database Profile records, never trusting client-supplied role claims.
     """
     if not authorization:
         raise UnauthorizedError(
@@ -55,29 +62,38 @@ def get_current_user(
             code="INVALID_TOKEN_CLAIMS",
         )
 
-    # Supabase roles can be in app_metadata, user_metadata, or direct role claim
-    app_meta = claims.get("app_metadata", {})
-    user_meta = claims.get("user_metadata", {})
-    role = (
-        app_meta.get("role")
-        or user_meta.get("role")
-        or claims.get("role")
-        or "authenticated"
-    )
+    # Resolve authoritative role & profile strictly from trusted database records
+    from app.models.profile import Profile
+    profile = db.query(Profile).filter(Profile.auth_user_id == str(user_id)).first()
 
-    hospital_id = (
-        claims.get("hospital_id")
-        or app_meta.get("hospital_id")
-        or user_meta.get("hospital_id")
-    )
+    if profile:
+        if not profile.is_active:
+            raise ForbiddenError(
+                message="Your account is currently inactive. Please contact an administrator.",
+                code="ACCOUNT_INACTIVE",
+            )
+        return AuthenticatedUser(
+            id=str(user_id),
+            role=profile.role.value.lower(),
+            profile_id=profile.id,
+            hospital_id=profile.hospital_id,
+            email=profile.email or claims.get("email"),
+            is_active=profile.is_active,
+            has_profile=True,
+            raw_claims=claims,
+        )
 
+    # Verified token subject with no database profile registered yet
+    # Role is strictly 'unregistered' - client-provided claims are NEVER trusted for authorization
     email = claims.get("email")
-
     return AuthenticatedUser(
         id=str(user_id),
-        role=str(role).lower(),
-        hospital_id=str(hospital_id) if hospital_id else None,
+        role="unregistered",
+        profile_id=None,
+        hospital_id=None,
         email=email,
+        is_active=True,
+        has_profile=False,
         raw_claims=claims,
     )
 
@@ -88,10 +104,15 @@ def require_role(allowed_roles: list[str]):
     def role_checker(
         current_user: AuthenticatedUser = Depends(get_current_user),
     ) -> AuthenticatedUser:
-        if current_user.role.lower() not in [r.lower() for r in allowed_roles]:
+        if not current_user.has_profile or current_user.role.lower() not in [r.lower() for r in allowed_roles]:
             raise ForbiddenError(
                 message=f"Access forbidden: requires one of roles [{', '.join(allowed_roles)}]",
                 code="INSUFFICIENT_ROLE_PERMISSIONS",
+            )
+        if not current_user.is_active:
+            raise ForbiddenError(
+                message="Account has been deactivated by administration. Access revoked.",
+                code="ACCOUNT_DEACTIVATED",
             )
         return current_user
 

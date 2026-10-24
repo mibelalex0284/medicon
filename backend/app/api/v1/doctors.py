@@ -42,6 +42,7 @@ def list_doctors(
         hospital_id=hospital_id,
         specialty_id=specialty_id,
         department_id=department_id,
+        is_active=True,
         skip=skip,
         limit=limit,
     )
@@ -55,6 +56,7 @@ def list_doctors(
 )
 def list_doctors_admin(
     hospital_id: Optional[str] = Query(None, description="Filter by hospital ID"),
+    status: Optional[str] = Query(None, description="Filter by status: 'active', 'inactive', or 'all'"),
     specialty_id: Optional[str] = Query(None, description="Filter by specialty ID"),
     department_id: Optional[str] = Query(None, description="Filter by department ID"),
     skip: int = 0,
@@ -63,11 +65,18 @@ def list_doctors_admin(
     admin_user: AuthenticatedUser = Depends(require_admin),
 ) -> List[DoctorResponse]:
     effective_hospital = hospital_id or admin_user.hospital_id
+    is_active: Optional[bool] = None
+    if status == "active":
+        is_active = True
+    elif status == "inactive":
+        is_active = False
+
     return doctor_service.list_doctors(
         db,
         hospital_id=effective_hospital,
         specialty_id=specialty_id,
         department_id=department_id,
+        is_active=is_active,
         skip=skip,
         limit=limit,
     )
@@ -110,13 +119,15 @@ def get_current_doctor(
     db: Session = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_doctor),
 ) -> DoctorResponse:
+    from sqlalchemy import or_
     from app.core.exceptions import ForbiddenError
     from app.models.doctor import Doctor
     from app.models.profile import Profile
+
     doc = (
         db.query(Doctor)
-        .join(Profile)
-        .filter(Profile.auth_user_id == current_user.id)
+        .join(Profile, Doctor.profile_id == Profile.id)
+        .filter(or_(Profile.auth_user_id == current_user.id, Profile.id == current_user.id))
         .first()
     )
     if not doc:
@@ -124,7 +135,12 @@ def get_current_doctor(
             message="No registered doctor record found for your user account",
             code="DOCTOR_RECORD_NOT_FOUND",
         )
-    return doc
+    if not doc.is_active:
+        raise ForbiddenError(
+            message="Doctor account has been deactivated by clinic administration.",
+            code="DOCTOR_DEACTIVATED",
+        )
+    return doctor_service.get_doctor(db, doc.id)
 
 
 @router.get(

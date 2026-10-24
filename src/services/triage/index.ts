@@ -121,11 +121,6 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
     } catch {
       // Supabase not configured or in fallback mode
     }
-
-    // 3. Fallback dev token from environment variable if configured
-    if (process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN) {
-      headers["Authorization"] = `Bearer ${process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN}`;
-    }
   }
 
   return headers;

@@ -42,7 +42,7 @@ def test_malformed_auth_header(client: TestClient):
     assert body["error"]["code"] == "INVALID_AUTH_HEADER"
 
 
-def test_patient_access_allowed(client: TestClient, patient_headers: dict):
+def test_patient_access_allowed(client: TestClient, auth_seeded_db, patient_headers: dict):
     response = client.get("/api/v1/test-guard/patient-only", headers=patient_headers)
     assert response.status_code == 200
     data = response.json()
@@ -50,14 +50,14 @@ def test_patient_access_allowed(client: TestClient, patient_headers: dict):
     assert data["user_id"] == "patient-123"
 
 
-def test_patient_access_to_doctor_route_forbidden(client: TestClient, patient_headers: dict):
+def test_patient_access_to_doctor_route_forbidden(client: TestClient, auth_seeded_db, patient_headers: dict):
     response = client.get("/api/v1/test-guard/doctor-only", headers=patient_headers)
     assert response.status_code == 403
     body = response.json()
     assert body["error"]["code"] == "INSUFFICIENT_ROLE_PERMISSIONS"
 
 
-def test_doctor_access_to_doctor_route_allowed(client: TestClient, doctor_headers: dict):
+def test_doctor_access_to_doctor_route_allowed(client: TestClient, auth_seeded_db, doctor_headers: dict):
     response = client.get("/api/v1/test-guard/doctor-only", headers=doctor_headers)
     assert response.status_code == 200
     data = response.json()
@@ -65,7 +65,7 @@ def test_doctor_access_to_doctor_route_allowed(client: TestClient, doctor_header
     assert data["user_id"] == "doctor-456"
 
 
-def test_doctor_access_to_admin_route_forbidden(client: TestClient, doctor_headers: dict):
+def test_doctor_access_to_admin_route_forbidden(client: TestClient, auth_seeded_db, doctor_headers: dict):
     response = client.get("/api/v1/test-guard/admin-only", headers=doctor_headers)
     assert response.status_code == 403
     body = response.json()
@@ -73,7 +73,7 @@ def test_doctor_access_to_admin_route_forbidden(client: TestClient, doctor_heade
 
 
 def test_admin_access_allowed_everywhere(
-    client: TestClient, admin_headers: dict
+    client: TestClient, auth_seeded_db, admin_headers: dict
 ):
     # Admin is allowed on patient route
     r1 = client.get("/api/v1/test-guard/patient-only", headers=admin_headers)
@@ -86,3 +86,4 @@ def test_admin_access_allowed_everywhere(
     # Admin is allowed on admin route
     r3 = client.get("/api/v1/test-guard/admin-only", headers=admin_headers)
     assert r3.status_code == 200
+

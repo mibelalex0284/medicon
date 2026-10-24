@@ -357,11 +357,19 @@ function TriageChatContent() {
   };
 
   const handleProceedToDoctorMatching = () => {
+    const storedHospId =
+      typeof window !== "undefined"
+        ? sessionStorage.getItem("careroute_selected_hospital_id")
+        : null;
+    const params = new URLSearchParams();
     if (sessionId) {
-      router.push(`/patient/doctors?session_id=${encodeURIComponent(sessionId)}`);
-    } else {
-      router.push("/patient/doctors");
+      params.set("session_id", sessionId);
     }
+    if (storedHospId) {
+      params.set("hospital_id", storedHospId);
+    }
+    const query = params.toString();
+    router.push(query ? `/patient/doctors?${query}` : "/patient/doctors");
   };
 
   const isInputDisabled =

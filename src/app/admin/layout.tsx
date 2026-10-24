@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useAuth } from "@/context/AuthContext";
 import {
   Building2,
@@ -35,7 +36,44 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { logout, loginAsRole } = useAuth();
+  const { user, isLoading, logout, loginAsRole } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (!user) {
+        router.replace("/login");
+      } else if (user.role === "unregistered") {
+        router.replace("/account-setup");
+      } else if (user.role !== "admin") {
+        if (user.role === "patient") router.replace("/patient/dashboard");
+        else if (user.role === "doctor") router.replace("/doctor/dashboard");
+        else router.replace("/login");
+      }
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading || !user || user.role !== "admin") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-9 w-9 animate-spin rounded-full border-3 border-sky-500 border-t-transparent" />
+          <p className="text-xs text-slate-400 font-medium tracking-wide">
+            Verifying administrator authorization...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const adminName = user.name || user.email || "Clinic Administrator";
+  const adminInitials = adminName
+    .split(" ")
+    .map((p) => p[0])
+    .filter(Boolean)
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   return (
     <div className="min-h-screen bg-slate-100 flex flex-col md:flex-row">
@@ -63,14 +101,14 @@ export default function AdminLayout({
           <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-800/60">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center font-bold text-xs">
-                ME
+                {adminInitials}
               </div>
               <div className="overflow-hidden">
                 <p className="text-sm font-semibold text-white truncate">
-                  Mark Evans
+                  {adminName}
                 </p>
-                <p className="text-[11px] text-slate-400">
-                  Operations Director
+                <p className="text-[11px] text-slate-400 truncate font-mono">
+                  {user.email}
                 </p>
               </div>
             </div>
@@ -113,22 +151,24 @@ export default function AdminLayout({
 
           {/* Bottom Switcher & Sign Out */}
           <div className="p-4 border-t border-slate-800/80 space-y-2 text-xs">
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <button
-                onClick={() => loginAsRole("patient")}
-                className="py-1.5 px-2 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 flex items-center justify-center gap-1"
-              >
-                <Activity size={12} />
-                Patient
-              </button>
-              <button
-                onClick={() => loginAsRole("doctor")}
-                className="py-1.5 px-2 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 flex items-center justify-center gap-1"
-              >
-                <Stethoscope size={12} />
-                Doctor
-              </button>
-            </div>
+            {process.env.NODE_ENV === "development" && (
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <button
+                  onClick={() => loginAsRole("patient")}
+                  className="py-1.5 px-2 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 flex items-center justify-center gap-1"
+                >
+                  <Activity size={12} />
+                  Patient
+                </button>
+                <button
+                  onClick={() => loginAsRole("doctor")}
+                  className="py-1.5 px-2 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 flex items-center justify-center gap-1"
+                >
+                  <Stethoscope size={12} />
+                  Doctor
+                </button>
+              </div>
+            )}
 
             <button
               onClick={logout}

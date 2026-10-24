@@ -4,8 +4,14 @@ from app.core.dependencies import (
     AuthenticatedUser,
     get_current_user,
     require_patient,
+    verify_hospital_access,
 )
+from app.core.exceptions import ForbiddenError
 from app.db.session import get_db
+from app.models.appointment import Appointment
+from app.models.doctor import Doctor
+from app.models.profile import Profile
+from app.models.queue_entry import QueueEntry
 from app.schemas.patient import PatientResponse
 from app.schemas.queue_entry import PatientQueueStatusResponse
 from app.services.patient_service import patient_service
@@ -45,7 +51,7 @@ def get_current_patient_queue(
     "/{patient_id}",
     response_model=PatientResponse,
     summary="Get Patient Details",
-    description="Retrieves a patient record. Patients may only access their own record.",
+    description="Retrieves a patient record. Access is strictly constrained by role and clinical relationship.",
 )
 def get_patient(
     patient_id: str,
@@ -54,8 +60,56 @@ def get_patient(
 ) -> PatientResponse:
     patient = patient_service.get_patient(db, patient_id)
 
-    # Patients can ONLY access their own record
+    # 1. Patients can ONLY access their own record
     if current_user.is_patient:
         patient_service.assert_patient_access(patient, current_user.id)
+        return patient
 
-    return patient
+    # 2. Doctors may access if they have a clinical relationship or belong to the patient's hospital
+    elif current_user.is_doctor:
+        doc = (
+            db.query(Doctor)
+            .join(Profile)
+            .filter(Profile.auth_user_id == current_user.id)
+            .first()
+        )
+        if not doc:
+            raise ForbiddenError(
+                message="No registered doctor record found for authenticated user",
+                code="DOCTOR_RECORD_NOT_FOUND",
+            )
+
+        # Check for direct clinical relationship (appointment or queue entry)
+        has_clinical_relationship = (
+            db.query(Appointment)
+            .filter(Appointment.doctor_id == doc.id, Appointment.patient_id == patient.id)
+            .first()
+            is not None
+            or db.query(QueueEntry)
+            .filter(QueueEntry.doctor_id == doc.id, QueueEntry.patient_id == patient.id)
+            .first()
+            is not None
+        )
+
+        if not has_clinical_relationship:
+            # Fall back to hospital tenant boundary
+            if patient.profile.hospital_id and doc.hospital_id != patient.profile.hospital_id:
+                raise ForbiddenError(
+                    message="Access forbidden: doctor does not belong to the patient's hospital and has no active clinical relationship",
+                    code="CROSS_HOSPITAL_FORBIDDEN",
+                )
+        return patient
+
+    # 3. Administrators may access within their hospital tenant boundary
+    elif current_user.is_admin:
+        if patient.profile.hospital_id:
+            verify_hospital_access(patient.profile.hospital_id, current_user)
+        return patient
+
+    # 4. Any other role (e.g. unregistered or unverified) is strictly forbidden
+    else:
+        raise ForbiddenError(
+            message="Access forbidden: insufficient role permissions to view patient record",
+            code="INSUFFICIENT_ROLE_PERMISSIONS",
+        )
+

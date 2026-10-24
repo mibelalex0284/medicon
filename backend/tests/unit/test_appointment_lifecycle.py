@@ -465,4 +465,193 @@ def test_doctor_availability_timezone_boundary(db_session: Session, setup_clinic
     )
     assert len(avail.slots) == 6
     assert all(s.is_available for s in avail.slots)
+    assert avail.has_schedule is True
+    assert avail.schedule_configured is True
+    assert avail.is_fully_booked is False
+
+
+def test_doctor_with_no_configured_schedule(db_session: Session, setup_clinic_data: dict):
+    hosp = setup_clinic_data["hospital"]
+    doc_prof = profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="doc-unscheduled-uuid",
+            role=UserRole.DOCTOR,
+            full_name="Dr. Unscheduled",
+            email="drunscheduled@clinic.org",
+            hospital_id=hosp.id,
+        ),
+    )
+    unscheduled_doc = doctor_service.create_doctor(
+        db_session,
+        DoctorCreate(
+            profile_id=doc_prof.id,
+            hospital_id=hosp.id,
+            license_number="LIC-UNSCHED-01",
+        ),
+    )
+
+    future_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=3)
+    avail = appointment_service.get_doctor_availability(
+        db_session, doctor_id=unscheduled_doc.id, requested_date=future_date
+    )
+    assert avail.slots == []
+    assert avail.has_schedule is False
+    assert avail.schedule_configured is False
+    assert avail.is_fully_booked is False
+
+    p1 = setup_clinic_data["patient1"]
+    with pytest.raises(ConflictError) as exc_info:
+        appointment_service.book_appointment(
+            db_session,
+            AppointmentCreate(
+                patient_id=p1.id,
+                doctor_id=unscheduled_doc.id,
+                hospital_id=hosp.id,
+                appointment_date=future_date,
+                scheduled_start=datetime.time(9, 0),
+                scheduled_end=datetime.time(9, 30),
+            ),
+        )
+    assert exc_info.value.code == "DOCTOR_UNAVAILABLE"
+
+
+def test_fully_booked_date_availability_and_release_on_cancellation(
+    db_session: Session, setup_clinic_data: dict
+):
+    doc = setup_clinic_data["doctor"]
+    p1 = setup_clinic_data["patient1"]
+    p2 = setup_clinic_data["patient2"]
+    future_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=4)
+
+    # Doctor schedule has 6 half-hour slots: 09:00 to 12:00
+    # Book all 6 slots
+    booked_appts = []
+    for hour in (9, 10, 11):
+        for minute in (0, 30):
+            start_t = datetime.time(hour, minute)
+            end_t = (
+                datetime.time(hour, 30) if minute == 0 else datetime.time(hour + 1, 0)
+            )
+            appt = appointment_service.book_appointment(
+                db_session,
+                AppointmentCreate(
+                    patient_id=p1.id,
+                    doctor_id=doc.id,
+                    hospital_id=doc.hospital_id,
+                    appointment_date=future_date,
+                    scheduled_start=start_t,
+                    scheduled_end=end_t,
+                ),
+            )
+            booked_appts.append(appt)
+
+    # Availability must show is_fully_booked = True
+    avail = appointment_service.get_doctor_availability(
+        db_session, doctor_id=doc.id, requested_date=future_date, slot_duration_minutes=30
+    )
+    assert avail.has_schedule is True
+    assert avail.schedule_configured is True
+    assert avail.is_fully_booked is True
+    assert len(avail.slots) == 6
+    assert all(not s.is_available for s in avail.slots)
+
+    # Attempting to book any slot on the fully booked date must fail
+    with pytest.raises(ConflictError) as exc_info:
+        appointment_service.book_appointment(
+            db_session,
+            AppointmentCreate(
+                patient_id=p2.id,
+                doctor_id=doc.id,
+                hospital_id=doc.hospital_id,
+                appointment_date=future_date,
+                scheduled_start=datetime.time(9, 0),
+                scheduled_end=datetime.time(9, 30),
+            ),
+        )
+    assert exc_info.value.code == "APPOINTMENT_CONFLICT"
+
+    # Cancel the first appointment (09:00 - 09:30)
+    cancelled = appointment_service.cancel_appointment(
+        db_session,
+        booked_appts[0].id,
+        actor_auth_user_id=p1.profile.auth_user_id,
+    )
+    assert cancelled.status == AppointmentStatus.CANCELLED
+
+    # Check that the 09:00 - 09:30 slot is released immediately
+    avail_after = appointment_service.get_doctor_availability(
+        db_session, doctor_id=doc.id, requested_date=future_date, slot_duration_minutes=30
+    )
+    assert avail_after.is_fully_booked is False
+    slot_900 = next(s for s in avail_after.slots if s.start_time == datetime.time(9, 0))
+    assert slot_900.is_available is True
+
+    # Patient 2 can now book the released slot
+    p2_appt = appointment_service.book_appointment(
+        db_session,
+        AppointmentCreate(
+            patient_id=p2.id,
+            doctor_id=doc.id,
+            hospital_id=doc.hospital_id,
+            appointment_date=future_date,
+            scheduled_start=datetime.time(9, 0),
+            scheduled_end=datetime.time(9, 30),
+        ),
+    )
+    assert p2_appt.id is not None
+    assert p2_appt.patient_id == p2.id
+
+
+def test_overlapping_and_concurrency_conflict_rejection(
+    db_session: Session, setup_clinic_data: dict
+):
+    doc = setup_clinic_data["doctor"]
+    p1 = setup_clinic_data["patient1"]
+    p2 = setup_clinic_data["patient2"]
+    future_date = datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=6)
+
+    # Book 09:00 - 09:30
+    appt1 = appointment_service.book_appointment(
+        db_session,
+        AppointmentCreate(
+            patient_id=p1.id,
+            doctor_id=doc.id,
+            hospital_id=doc.hospital_id,
+            appointment_date=future_date,
+            scheduled_start=datetime.time(9, 0),
+            scheduled_end=datetime.time(9, 30),
+        ),
+    )
+    assert appt1.id is not None
+
+    # Overlapping slot attempt: 09:15 - 09:45
+    with pytest.raises(ConflictError) as exc_overlap:
+        appointment_service.book_appointment(
+            db_session,
+            AppointmentCreate(
+                patient_id=p2.id,
+                doctor_id=doc.id,
+                hospital_id=doc.hospital_id,
+                appointment_date=future_date,
+                scheduled_start=datetime.time(9, 15),
+                scheduled_end=datetime.time(9, 45),
+            ),
+        )
+    assert exc_overlap.value.code == "APPOINTMENT_CONFLICT"
+
+    # Exact duplicate slot attempt: 09:00 - 09:30
+    with pytest.raises(ConflictError) as exc_dup:
+        appointment_service.book_appointment(
+            db_session,
+            AppointmentCreate(
+                patient_id=p2.id,
+                doctor_id=doc.id,
+                hospital_id=doc.hospital_id,
+                appointment_date=future_date,
+                scheduled_start=datetime.time(9, 0),
+                scheduled_end=datetime.time(9, 30),
+            ),
+        )
+    assert exc_dup.value.code == "APPOINTMENT_CONFLICT"
 
