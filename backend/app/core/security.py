@@ -65,9 +65,23 @@ def decode_jwt_token(
         )
 
     try:
+        decode_options = {
+            "verify_aud": bool(settings.SUPABASE_JWT_AUDIENCE),
+            "verify_exp": True,
+        }
+        decode_kwargs: Dict[str, Any] = {
+            "algorithms": [alg],
+            "options": decode_options,
+        }
+        if settings.SUPABASE_JWT_AUDIENCE:
+            decode_kwargs["audience"] = settings.SUPABASE_JWT_AUDIENCE
+
         if alg.startswith("HS"):
             # Legacy symmetric HMAC verification
             key = secret or settings.SUPABASE_JWT_SECRET
+            if not key and settings.ENVIRONMENT.lower() != "production":
+                key = "dev-insecure-test-signing-secret-32bytes-min"
+
             if not key or (settings.ENVIRONMENT.lower() == "production" and "placeholder" in key):
                 raise UnauthorizedError(
                     message="Legacy HS256 token verification is not configured or disabled in production",
@@ -76,8 +90,7 @@ def decode_jwt_token(
             payload = jwt.decode(
                 token,
                 key,
-                algorithms=[alg],
-                options={"verify_aud": False, "verify_exp": True},
+                **decode_kwargs,
             )
         else:
             # Asymmetric key verification (ES256 / RS256 via JWKS or explicit public key)
@@ -85,8 +98,7 @@ def decode_jwt_token(
                 payload = jwt.decode(
                     token,
                     secret,
-                    algorithms=[alg],
-                    options={"verify_aud": False, "verify_exp": True},
+                    **decode_kwargs,
                 )
             elif settings.effective_jwks_url:
                 jwks_client = get_jwks_client(settings.effective_jwks_url)
@@ -94,8 +106,7 @@ def decode_jwt_token(
                 payload = jwt.decode(
                     token,
                     signing_key.key,
-                    algorithms=[alg],
-                    options={"verify_aud": False, "verify_exp": True},
+                    **decode_kwargs,
                 )
             else:
                 raise UnauthorizedError(
@@ -173,6 +184,9 @@ def create_access_token(
     }
     if hospital_id:
         claims["hospital_id"] = hospital_id
+
+    if settings.SUPABASE_JWT_AUDIENCE:
+        claims.setdefault("aud", settings.SUPABASE_JWT_AUDIENCE)
 
     if additional_claims:
         claims.update(additional_claims)

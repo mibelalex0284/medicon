@@ -68,9 +68,18 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = "https://rkyrzctczohppspnzfxp.supabase.co"
     SUPABASE_ANON_KEY: str = "your-anon-key"
     SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
-    SUPABASE_JWT_SECRET: Optional[str] = "your-supabase-jwt-secret-placeholder-for-dev"
+    SUPABASE_JWT_SECRET: Optional[str] = None
     SUPABASE_JWT_ALGORITHM: str = "ES256"
     SUPABASE_JWKS_URL: Optional[str] = "https://rkyrzctczohppspnzfxp.supabase.co/auth/v1/.well-known/jwks.json"
+    SUPABASE_JWT_AUDIENCE: Optional[str] = None
+
+    @field_validator("SUPABASE_JWT_SECRET", mode="before")
+    @classmethod
+    def assemble_jwt_secret(cls, v: Any) -> Optional[str]:
+        if isinstance(v, str):
+            v_stripped = v.strip()
+            return v_stripped if v_stripped else None
+        return v
 
     @property
     def is_supabase_configured(self) -> bool:
@@ -82,25 +91,60 @@ class Settings(BaseSettings):
         return True
 
     @property
+    def is_jwks_configured(self) -> bool:
+        """Determines if valid non-placeholder JWKS configuration is present."""
+        url = self.effective_jwks_url
+        if not url:
+            return False
+        if "your-project" in url or "placeholder" in url:
+            return False
+        return True
+
+    @property
     def effective_jwks_url(self) -> Optional[str]:
         """Resolves the live JWKS URL for asymmetric ES256 verification."""
-        if self.SUPABASE_JWKS_URL:
+        if self.SUPABASE_JWKS_URL and "placeholder" not in self.SUPABASE_JWKS_URL and "your-project" not in self.SUPABASE_JWKS_URL:
             return self.SUPABASE_JWKS_URL
         if self.SUPABASE_URL and "placeholder" not in self.SUPABASE_URL and "your-project" not in self.SUPABASE_URL:
             return f"{self.SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
         return None
 
     def validate_production_configuration(self) -> None:
-        """Enforces that production builds fail immediately if authentication secrets are missing or placeholder."""
+        """Enforces that production builds fail immediately if authentication secrets or signing configs are invalid."""
         if self.ENVIRONMENT.lower() == "production":
             if not self.is_supabase_configured:
                 raise RuntimeError(
                     "FATAL: Production environment requires authentic Supabase configuration. "
                     "SUPABASE_URL and SUPABASE_ANON_KEY cannot be placeholders."
                 )
-            if self.SUPABASE_JWT_SECRET and "placeholder" in self.SUPABASE_JWT_SECRET:
+
+            alg = self.SUPABASE_JWT_ALGORITHM.upper()
+            if alg.startswith("HS"):
+                # Symmetric HS256 genuinely requires SUPABASE_JWT_SECRET
+                if not self.SUPABASE_JWT_SECRET:
+                    raise RuntimeError(
+                        f"FATAL: Production environment requires authentic SUPABASE_JWT_SECRET "
+                        f"when configured for {alg} verification."
+                    )
+                if "placeholder" in self.SUPABASE_JWT_SECRET:
+                    raise RuntimeError(
+                        "FATAL: Production environment cannot use placeholder SUPABASE_JWT_SECRET."
+                    )
+            elif alg.startswith("ES") or alg.startswith("RS"):
+                # Asymmetric ES256/RS256 requires authentic JWKS configuration
+                if not self.is_jwks_configured:
+                    raise RuntimeError(
+                        f"FATAL: Production environment requires authentic JWKS configuration "
+                        f"for {alg} verification. Set SUPABASE_JWKS_URL or valid SUPABASE_URL."
+                    )
+                # If a secret is optionally provided for legacy symmetric tokens, ensure it is not a placeholder
+                if self.SUPABASE_JWT_SECRET and "placeholder" in self.SUPABASE_JWT_SECRET:
+                    raise RuntimeError(
+                        "FATAL: Production environment cannot use placeholder SUPABASE_JWT_SECRET."
+                    )
+            else:
                 raise RuntimeError(
-                    "FATAL: Production environment cannot use placeholder SUPABASE_JWT_SECRET."
+                    f"FATAL: Unsupported SUPABASE_JWT_ALGORITHM in production: '{alg}'."
                 )
 
     # Database

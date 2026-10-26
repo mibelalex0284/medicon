@@ -208,3 +208,170 @@ def test_legacy_hs256_rejected_in_production_when_placeholder(monkeypatch):
         decode_jwt_token(token)
     assert exc_info.value.code == "LEGACY_SECRET_NOT_CONFIGURED"
 
+
+def test_legacy_hs256_rejected_in_production_when_secret_unset(monkeypatch):
+    """Verifies that legacy HS256 tokens are rejected if production secret is unset."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "SUPABASE_JWT_SECRET", None)
+
+    token = create_access_token(
+        subject="user-hs256",
+        role="patient",
+        secret="temporary-secret-32bytes-for-signing",
+    )
+    with pytest.raises(UnauthorizedError) as exc_info:
+        decode_jwt_token(token)
+    assert exc_info.value.code == "LEGACY_SECRET_NOT_CONFIGURED"
+
+
+def test_legacy_hs256_accepted_in_production_with_authentic_secret(monkeypatch):
+    """Verifies that legacy HS256 tokens succeed in production when authentic secret is configured."""
+    from app.core.config import settings
+
+    authentic_secret = "super-authentic-production-secret-min-32-chars-long"
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    monkeypatch.setattr(settings, "SUPABASE_JWT_SECRET", authentic_secret)
+
+    token = create_access_token(
+        subject="user-hs256-auth",
+        role="patient",
+        secret=authentic_secret,
+    )
+    payload = decode_jwt_token(token)
+    assert payload["sub"] == "user-hs256-auth"
+
+
+def test_audience_verification(monkeypatch):
+    """Verifies audience claim enforcement when SUPABASE_JWT_AUDIENCE is configured."""
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "SUPABASE_JWT_AUDIENCE", "authenticated")
+
+    # 1. Matching audience succeeds
+    token_matching = create_access_token(
+        subject="aud-user",
+        role="patient",
+        additional_claims={"aud": "authenticated"},
+    )
+    payload = decode_jwt_token(token_matching)
+    assert payload["sub"] == "aud-user"
+
+    # 2. Mismatched audience fails
+    token_mismatched = create_access_token(
+        subject="aud-user-bad",
+        role="patient",
+        additional_claims={"aud": "wrong-audience"},
+    )
+    with pytest.raises(UnauthorizedError) as exc_info:
+        decode_jwt_token(token_mismatched)
+    assert exc_info.value.code == "INVALID_TOKEN"
+
+
+class TestProductionConfigurationValidation:
+    """Verifies Settings.validate_production_configuration behavior."""
+
+    def test_production_es256_jwks_valid(self):
+        from app.core.config import Settings
+
+        cfg = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://prod-project.supabase.co",
+            SUPABASE_ANON_KEY="authentic-anon-key-12345",
+            SUPABASE_JWT_ALGORITHM="ES256",
+            SUPABASE_JWKS_URL="https://prod-project.supabase.co/auth/v1/.well-known/jwks.json",
+            SUPABASE_JWT_SECRET=None,
+        )
+        # Should not raise
+        cfg.validate_production_configuration()
+
+    def test_production_rejects_placeholder_supabase_url(self):
+        from app.core.config import Settings
+
+        cfg = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://your-project.supabase.co",
+            SUPABASE_ANON_KEY="authentic-anon-key-12345",
+            SUPABASE_JWT_ALGORITHM="ES256",
+        )
+        with pytest.raises(RuntimeError, match="requires authentic Supabase configuration"):
+            cfg.validate_production_configuration()
+
+    def test_production_rejects_placeholder_anon_key(self):
+        from app.core.config import Settings
+
+        cfg = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://prod-project.supabase.co",
+            SUPABASE_ANON_KEY="your-anon-key",
+            SUPABASE_JWT_ALGORITHM="ES256",
+        )
+        with pytest.raises(RuntimeError, match="requires authentic Supabase configuration"):
+            cfg.validate_production_configuration()
+
+    def test_production_es256_rejects_placeholder_jwks_url(self):
+        from app.core.config import Settings
+
+        cfg_bad = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://placeholder.supabase.co",
+            SUPABASE_ANON_KEY="authentic-anon-key-12345",
+            SUPABASE_JWT_ALGORITHM="ES256",
+            SUPABASE_JWKS_URL="https://placeholder.supabase.co/auth/v1/jwks.json",
+        )
+        with pytest.raises(RuntimeError):
+            cfg_bad.validate_production_configuration()
+
+    def test_production_es256_rejects_explicit_placeholder_secret(self):
+        from app.core.config import Settings
+
+        cfg = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://prod-project.supabase.co",
+            SUPABASE_ANON_KEY="authentic-anon-key-12345",
+            SUPABASE_JWT_ALGORITHM="ES256",
+            SUPABASE_JWKS_URL="https://prod-project.supabase.co/auth/v1/.well-known/jwks.json",
+            SUPABASE_JWT_SECRET="my-placeholder-secret-here",
+        )
+        with pytest.raises(RuntimeError, match="cannot use placeholder SUPABASE_JWT_SECRET"):
+            cfg.validate_production_configuration()
+
+    def test_production_hs256_requires_secret(self):
+        from app.core.config import Settings
+
+        cfg = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://prod-project.supabase.co",
+            SUPABASE_ANON_KEY="authentic-anon-key-12345",
+            SUPABASE_JWT_ALGORITHM="HS256",
+            SUPABASE_JWT_SECRET=None,
+        )
+        with pytest.raises(RuntimeError, match="requires authentic SUPABASE_JWT_SECRET"):
+            cfg.validate_production_configuration()
+
+    def test_production_hs256_rejects_placeholder_secret(self):
+        from app.core.config import Settings
+
+        cfg = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://prod-project.supabase.co",
+            SUPABASE_ANON_KEY="authentic-anon-key-12345",
+            SUPABASE_JWT_ALGORITHM="HS256",
+            SUPABASE_JWT_SECRET="placeholder-jwt-secret",
+        )
+        with pytest.raises(RuntimeError, match="cannot use placeholder SUPABASE_JWT_SECRET"):
+            cfg.validate_production_configuration()
+
+    def test_production_hs256_with_authentic_secret_succeeds(self):
+        from app.core.config import Settings
+
+        cfg = Settings(
+            ENVIRONMENT="production",
+            SUPABASE_URL="https://prod-project.supabase.co",
+            SUPABASE_ANON_KEY="authentic-anon-key-12345",
+            SUPABASE_JWT_ALGORITHM="HS256",
+            SUPABASE_JWT_SECRET="super-authentic-hs256-secret-32-chars-long",
+        )
+        cfg.validate_production_configuration()
+
