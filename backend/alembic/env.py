@@ -11,7 +11,7 @@ backend_dir = Path(__file__).resolve().parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
-from app.core.config import settings
+from app.core.config import normalize_database_url, settings
 from app.db.base import Base
 # Ensure all models are imported so Base.metadata contains every CareRoute-X table
 from app import models as _models  # noqa: F401
@@ -28,7 +28,8 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # Provide database URL dynamically without storing credentials in alembic.ini
-config.set_main_option("sqlalchemy.url", settings.DATABASE_URL.replace("%", "%%"))
+db_url = normalize_database_url(settings.DATABASE_URL)
+config.set_main_option("sqlalchemy.url", db_url.replace("%", "%%"))
 
 
 def run_migrations_offline() -> None:
@@ -42,7 +43,7 @@ def run_migrations_offline() -> None:
     Calls to context.execute() here emit the given string to the
     script output.
     """
-    url = settings.DATABASE_URL
+    url = normalize_database_url(settings.DATABASE_URL)
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -62,7 +63,7 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
     """
     configuration = config.get_section(config.config_ini_section, {})
-    configuration["sqlalchemy.url"] = settings.DATABASE_URL
+    configuration["sqlalchemy.url"] = normalize_database_url(settings.DATABASE_URL)
 
     connectable = engine_from_config(
         configuration,

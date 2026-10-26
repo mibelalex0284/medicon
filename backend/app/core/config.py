@@ -3,9 +3,32 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+import urllib.parse
 from pathlib import Path
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+
+
+def normalize_database_url(url: str) -> str:
+    """
+    Normalizes database URLs to ensure a consistent driver strategy.
+
+    For PostgreSQL connections, maps schemes (postgres, postgresql,
+    postgresql+psycopg, postgresql+asyncpg) to postgresql+psycopg2 to ensure the
+    synchronous SQLAlchemy engine and Alembic migrations consistently use the
+    installed psycopg2 driver. Preserves SQLite and non-PostgreSQL URLs.
+    """
+    if not url:
+        return url
+    url_stripped = url.strip()
+    if url_stripped.startswith("sqlite"):
+        return url_stripped
+
+    parts = urllib.parse.urlsplit(url_stripped)
+    scheme = parts.scheme.lower()
+    if scheme in ("postgres", "postgresql", "postgresql+psycopg", "postgresql+psycopg2", "postgresql+asyncpg"):
+        return urllib.parse.urlunsplit(("postgresql+psycopg2", parts.netloc, parts.path, parts.query, parts.fragment))
+    return url_stripped
 
 
 class Settings(BaseSettings):
@@ -82,6 +105,13 @@ class Settings(BaseSettings):
 
     # Database
     DATABASE_URL: str = "sqlite:///./careroute.db"
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_database_url(cls, v: Any) -> str:
+        if isinstance(v, str):
+            return normalize_database_url(v)
+        return v
 
     # Gemini & Stage 4B Triage Configuration
     GEMINI_API_KEY: Optional[str] = None

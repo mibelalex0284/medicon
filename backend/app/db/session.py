@@ -1,16 +1,18 @@
 from typing import Generator
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
-from app.core.config import settings
+from app.core.config import normalize_database_url, settings
 from app.core.logging import logger
+
+database_url = normalize_database_url(settings.DATABASE_URL)
 
 # Connect args (e.g. check_same_thread for SQLite test database)
 connect_args = {}
-if settings.DATABASE_URL.startswith("sqlite"):
+if database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    database_url,
     echo=False,
     connect_args=connect_args,
     pool_pre_ping=True,
