@@ -1,5 +1,6 @@
 import datetime
 import uuid
+from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -216,6 +217,7 @@ def test_doctor_self_registration_prevented_and_admin_onboarding(
     doc_payload = {
         "full_name": "Dr. Hacker Claim",
         "email": "hacker.doc@test.org",
+        "password": "SecurePassword123!",
         "license_number": "MD-99999",
         "hospital_id": "hosp-001",
     }
@@ -228,23 +230,31 @@ def test_doctor_self_registration_prevented_and_admin_onboarding(
         auth_seeded_db.add(Hospital(id="hosp-001", code="CGH", name="City General Hospital"))
         auth_seeded_db.commit()
 
-    # 2. Admin onboards doctor -> 201
-    res_admin = client.post("/api/v1/admin/doctors/onboard", json=doc_payload, headers=admin_headers)
-    assert res_admin.status_code == 201
-    doc_data = res_admin.json()
-    assert doc_data["role"] == "doctor"
+    # 2. Admin onboards doctor -> 201 (mock Supabase Auth operations)
+    with patch(
+        "app.services.supabase_admin_service.supabase_admin_service.get_user_by_email",
+        return_value=None,
+    ), patch(
+        "app.services.supabase_admin_service.supabase_admin_service.create_doctor_user",
+        return_value=(str(uuid.uuid4()), True, "Physician onboarded successfully.", True),
+    ):
+        res_admin = client.post("/api/v1/admin/doctors/onboard", json=doc_payload, headers=admin_headers)
+        assert res_admin.status_code == 201
+        doc_data = res_admin.json()
+        assert doc_data["role"] == "doctor"
 
-    # 3. Duplicate license number rejected -> 409
-    dup_payload = {
-        "full_name": "Dr. Another Doctor",
-        "email": "another.doc@test.org",
-        "license_number": "MD-99999",  # Duplicate license
-        "hospital_id": "hosp-001",
-    }
-    res_dup = client.post("/api/v1/admin/doctors/onboard", json=dup_payload, headers=admin_headers)
-    assert res_dup.status_code == 409
-    dup_err = res_dup.json()
-    assert (dup_err.get("code") or dup_err.get("error", {}).get("code")) == "LICENSE_ALREADY_REGISTERED"
+        # 3. Duplicate license number rejected -> 409
+        dup_payload = {
+            "full_name": "Dr. Another Doctor",
+            "email": "another.doc@test.org",
+            "password": "SecurePassword123!",
+            "license_number": "MD-99999",  # Duplicate license
+            "hospital_id": "hosp-001",
+        }
+        res_dup = client.post("/api/v1/admin/doctors/onboard", json=dup_payload, headers=admin_headers)
+        assert res_dup.status_code == 409
+        dup_err = res_dup.json()
+        assert (dup_err.get("code") or dup_err.get("error", {}).get("code")) == "LICENSE_ALREADY_REGISTERED"
 
 
 

@@ -323,6 +323,16 @@ export class AuthService {
     }
   }
 
+  async updatePassword(password: string): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (supabase && isSupabaseConfigured()) {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        throw new Error(error.message || "Failed to update account password");
+      }
+    }
+  }
+
   async getRegistrationStatus(): Promise<{ patient_self_registration_enabled: boolean }> {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     try {
@@ -577,6 +587,7 @@ export class AuthService {
   async adminOnboardDoctor(payload: {
     full_name: string;
     email: string;
+    password: string;
     license_number: string;
     hospital_id: string;
     department_id?: string | null;

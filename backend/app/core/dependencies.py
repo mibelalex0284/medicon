@@ -63,7 +63,8 @@ def get_current_user(
         )
 
     # Resolve authoritative role & profile strictly from trusted database records
-    from app.models.profile import Profile
+    from app.models.profile import Profile, UserRole
+    from app.models.doctor import Doctor
     profile = db.query(Profile).filter(Profile.auth_user_id == str(user_id)).first()
 
     if profile:
@@ -72,6 +73,15 @@ def get_current_user(
                 message="Your account is currently inactive. Please contact an administrator.",
                 code="ACCOUNT_INACTIVE",
             )
+        # Double check doctor entity status if user is a doctor
+        if profile.role == UserRole.DOCTOR:
+            doctor_entity = db.query(Doctor).filter(Doctor.profile_id == profile.id).first()
+            if doctor_entity and not doctor_entity.is_active:
+                raise ForbiddenError(
+                    message="Doctor account has been deactivated by administration. Access revoked.",
+                    code="ACCOUNT_INACTIVE",
+                )
+
         return AuthenticatedUser(
             id=str(user_id),
             role=profile.role.value.lower(),

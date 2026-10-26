@@ -59,3 +59,63 @@ def test_parent_child_dependencies():
             assert provider.is_dependency_satisfied(child, known_present={}, known_absent=[parent_code]) is False
             # Parent present -> child IS satisfied
             assert provider.is_dependency_satisfied(child, known_present={parent_code: True}, known_absent=[]) is True
+
+
+def test_evidence_provider_load_from_direct_json(tmp_path):
+    """Verify provider can load directly from a JSON file."""
+    import json
+    json_file = tmp_path / "custom_evidences.json"
+    dummy_data = {
+        "E_1": {
+            "name": "E_1",
+            "code_question": "E_1",
+            "question_en": "Do you have cough?",
+            "data_type": "B",
+            "possible-values": [],
+            "is_antecedent": False,
+        }
+    }
+    json_file.write_text(json.dumps(dummy_data), encoding="utf-8")
+
+    provider = DDXPlusEvidenceProvider(data_path=str(json_file))
+    assert provider.is_loaded is True
+    assert "E_1" in provider.get_all_evidences()
+    assert provider.get_evidence_name("E_1") == "Do you have cough"
+
+
+def test_evidence_provider_load_from_directory(tmp_path):
+    """Verify provider can load release_evidences.json from a directory."""
+    import json
+    json_file = tmp_path / "release_evidences.json"
+    dummy_data = {
+        "E_2": {
+            "name": "E_2",
+            "code_question": "E_2",
+            "question_en": "Do you have headache?",
+            "data_type": "B",
+            "possible-values": [],
+            "is_antecedent": False,
+        }
+    }
+    json_file.write_text(json.dumps(dummy_data), encoding="utf-8")
+
+    provider = DDXPlusEvidenceProvider(data_path=str(tmp_path))
+    assert provider.is_loaded is True
+    assert "E_2" in provider.get_all_evidences()
+
+
+def test_evidence_provider_missing_path_graceful():
+    """Verify provider gracefully handles non-existent paths without crashing."""
+    provider = DDXPlusEvidenceProvider(data_path="/non_existent/path/to/dataset.zip")
+    # Should not crash; if no candidate matches, remains uninitialized in empty mode
+    assert isinstance(provider.get_all_evidences(), dict)
+
+
+def test_evidence_provider_corrupt_path_graceful(tmp_path):
+    """Verify provider gracefully handles invalid/corrupted files."""
+    corrupt_file = tmp_path / "corrupt.json"
+    corrupt_file.write_text("NOT A VALID JSON FILE", encoding="utf-8")
+
+    provider = DDXPlusEvidenceProvider(data_path=str(corrupt_file))
+    assert isinstance(provider.get_all_evidences(), dict)
+

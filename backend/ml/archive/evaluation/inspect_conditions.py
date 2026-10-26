@@ -2,7 +2,8 @@ import json
 import zipfile
 from app.services.triage.evidence_provider import ddxplus_provider
 
-with zipfile.ZipFile("D:/22687585.zip", "r") as z:
+archive_path = ddxplus_provider.loaded_path or "D:/22687585.zip"
+with zipfile.ZipFile(archive_path, "r") as z:
     conds = json.loads(z.read("release_conditions.json").decode("utf-8"))
 
 check_list = [

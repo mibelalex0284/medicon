@@ -10,6 +10,7 @@ from app.core.exceptions import (
 )
 from app.models.appointment import Appointment, AppointmentStatus
 from app.models.doctor import Doctor
+from app.models.doctor_schedule import DoctorSchedule
 from app.models.queue_entry import QueueStatus
 from app.repositories.appointment_repository import appointment_repo
 from app.repositories.doctor_repository import doctor_repo
@@ -103,6 +104,7 @@ class AppointmentService:
                 has_schedule=False,
                 schedule_configured=False,
                 is_fully_booked=False,
+                next_available_date=None,
                 slots=[],
             )
 
@@ -111,24 +113,31 @@ class AppointmentService:
         now_dt = datetime.datetime.now(hospital_tz)
         today_in_hospital = now_dt.date()
 
-        # If requested date is in the past, return empty slots
-        if requested_date < today_in_hospital:
-            return DoctorAvailabilityResponse(
-                doctor_id=doctor_id,
-                hospital_id=doctor.hospital_id,
-                appointment_date=requested_date,
-                slot_duration_minutes=slot_duration_minutes or 15,
-                has_schedule=False,
-                schedule_configured=True,
-                is_fully_booked=False,
-                slots=[],
-            )
-
         # 0 = Monday ... 6 = Sunday
         weekday = requested_date.weekday()
         schedules = [s for s in all_schedules if s.day_of_week == weekday]
 
+        # If requested date is in the past, no slots can be booked
+        if requested_date < today_in_hospital:
+            next_avail = AppointmentService.find_next_available_date(
+                db, doctor_id=doctor_id, from_date=today_in_hospital, all_schedules=all_schedules, hospital_tz=hospital_tz
+            )
+            return DoctorAvailabilityResponse(
+                doctor_id=doctor_id,
+                hospital_id=doctor.hospital_id,
+                appointment_date=requested_date,
+                slot_duration_minutes=slot_duration_minutes or (schedules[0].slot_duration_minutes if schedules else 15),
+                has_schedule=bool(schedules),
+                schedule_configured=True,
+                is_fully_booked=True,
+                next_available_date=next_avail,
+                slots=[],
+            )
+
         if not schedules:
+            next_avail = AppointmentService.find_next_available_date(
+                db, doctor_id=doctor_id, from_date=requested_date, all_schedules=all_schedules, hospital_tz=hospital_tz
+            )
             return DoctorAvailabilityResponse(
                 doctor_id=doctor_id,
                 hospital_id=doctor.hospital_id,
@@ -137,6 +146,7 @@ class AppointmentService:
                 has_schedule=False,
                 schedule_configured=True,
                 is_fully_booked=False,
+                next_available_date=next_avail,
                 slots=[],
             )
 
@@ -185,9 +195,18 @@ class AppointmentService:
                 # Move to next slot
                 current_start = slot_end
 
-        is_fully_booked = len(available_slots) > 0 and not any(s.is_available for s in available_slots)
-        if len(available_slots) == 0 and requested_date == today_in_hospital:
-            is_fully_booked = True
+        is_fully_booked = (len(available_slots) > 0 and not any(s.is_available for s in available_slots)) or (
+            len(available_slots) == 0 and requested_date == today_in_hospital
+        )
+        next_avail = None
+        if is_fully_booked or not any(s.is_available for s in available_slots):
+            next_avail = AppointmentService.find_next_available_date(
+                db,
+                doctor_id=doctor_id,
+                from_date=requested_date + datetime.timedelta(days=1),
+                all_schedules=all_schedules,
+                hospital_tz=hospital_tz,
+            )
 
         return DoctorAvailabilityResponse(
             doctor_id=doctor_id,
@@ -197,8 +216,68 @@ class AppointmentService:
             has_schedule=True,
             schedule_configured=True,
             is_fully_booked=is_fully_booked,
+            next_available_date=next_avail,
             slots=available_slots,
         )
+
+    @staticmethod
+    def find_next_available_date(
+        db: Session,
+        doctor_id: str,
+        *,
+        from_date: Optional[datetime.date] = None,
+        max_days: int = 14,
+        all_schedules: Optional[List[DoctorSchedule]] = None,
+        hospital_tz: Optional[ZoneInfo] = None,
+    ) -> Optional[datetime.date]:
+        """Finds the next upcoming calendar date on which the doctor has at least one available slot."""
+        if all_schedules is None:
+            all_schedules = doctor_schedule_repo.get_by_doctor(db, doctor_id=doctor_id, is_active=True)
+        if not all_schedules:
+            return None
+
+        if hospital_tz is None:
+            doctor = doctor_repo.get(db, doctor_id)
+            hospital = hospital_repo.get(db, doctor.hospital_id) if (doctor and doctor.hospital_id) else None
+            hospital_tz = get_hospital_timezone(hospital)
+
+        today_in_hospital = datetime.datetime.now(hospital_tz).date()
+        start = max(from_date or today_in_hospital, today_in_hospital)
+
+        for day_offset in range(max_days):
+            target_date = start + datetime.timedelta(days=day_offset)
+            target_weekday = target_date.weekday()
+            day_schedules = [s for s in all_schedules if s.day_of_week == target_weekday]
+            if not day_schedules:
+                continue
+
+            existing_appts = appointment_repo.get_by_doctor_and_date(
+                db, doctor_id=doctor_id, appointment_date=target_date
+            )
+            now_dt = datetime.datetime.now(hospital_tz)
+
+            for sched in day_schedules:
+                dur = sched.slot_duration_minutes
+                curr = sched.start_time
+                while True:
+                    dummy_dt = datetime.datetime.combine(target_date, curr)
+                    s_end_dt = dummy_dt + datetime.timedelta(minutes=dur)
+                    s_end = s_end_dt.time()
+                    if s_end_dt.date() > target_date or s_end > sched.end_time:
+                        break
+                    s_start_dt = datetime.datetime.combine(target_date, curr, tzinfo=hospital_tz)
+                    if target_date == today_in_hospital and s_start_dt <= now_dt:
+                        curr = s_end
+                        continue
+                    is_booked = any(
+                        a.scheduled_start < s_end and a.scheduled_end > curr
+                        for a in existing_appts
+                    )
+                    if not is_booked:
+                        return target_date
+                    curr = s_end
+
+        return None
 
     @staticmethod
     def book_appointment(db: Session, obj_in: AppointmentCreate) -> Appointment:

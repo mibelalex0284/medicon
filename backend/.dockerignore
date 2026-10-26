@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+tests/
+
+# Local databases and secrets
+.env
+.env.*
+*.db
+*.sqlite3
+
+# Large archives and local backups
+*.zip
+*.tar.gz
+ml/archive/

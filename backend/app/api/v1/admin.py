@@ -1,8 +1,8 @@
 import datetime
 import logging
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 from app.core.dependencies import (
     AuthenticatedUser,
@@ -28,6 +28,7 @@ from app.schemas.admin_settings import (
     AdminCreatePatientRequest,
     AdminDoctorLifecycleResponse,
     AdminOnboardDoctorRequest,
+    AdminResendInvitationResponse,
     AdminSettingItem,
     AdminSettingsResponse,
     AdminUpdateDoctorStatusRequest,
@@ -37,6 +38,7 @@ from app.schemas.doctor_schedule import (
     DoctorScheduleBatchUpdate,
     DoctorScheduleResponse,
 )
+from app.services.doctor_service import doctor_service
 from app.services.supabase_admin_service import supabase_admin_service
 from app.services.system_setting_service import system_setting_service
 
@@ -241,17 +243,41 @@ def admin_onboard_doctor(
                 code="DEPARTMENT_NOT_FOUND",
             )
 
-    # 5. Check if user already exists in Supabase Auth with another role
+    # 5. Check if user already exists in Supabase Auth with another role or existing profile
+    if payload.auth_user_id:
+        existing_profile_by_auth = (
+            db.query(Profile).filter(Profile.auth_user_id == payload.auth_user_id).first()
+        )
+        if existing_profile_by_auth:
+            raise ConflictError(
+                message=f"The provided auth_user_id '{payload.auth_user_id}' is already linked to another profile in the database.",
+                code="AUTH_USER_ALREADY_LINKED",
+            )
+
     existing_auth_user = supabase_admin_service.get_user_by_email(email_clean)
     if existing_auth_user:
+        auth_id = existing_auth_user.get("id")
+        if auth_id:
+            existing_profile_by_auth = (
+                db.query(Profile).filter(Profile.auth_user_id == auth_id).first()
+            )
+            if existing_profile_by_auth:
+                raise ConflictError(
+                    message=f"The Supabase Auth identity for '{email_clean}' is already linked to an existing profile.",
+                    code="AUTH_USER_ALREADY_LINKED",
+                )
         metadata_role = (existing_auth_user.get("user_metadata") or {}).get("role")
         if metadata_role in ("patient", "admin"):
             raise ConflictError(
                 message=f"An account with email '{email_clean}' already exists in Supabase Auth with role '{metadata_role}'. Existing patients or administrators cannot be silently promoted to a physician.",
                 code="CANNOT_PROMOTE_EXISTING_ROLE",
             )
+        raise ConflictError(
+            message=f"An account with email '{email_clean}' already exists in Supabase Auth. Existing accounts cannot be overwritten with a new password during onboarding.",
+            code="AUTH_USER_ALREADY_EXISTS",
+        )
 
-    # 6. Provision identity or invite doctor in Supabase Auth
+    # 6. Provision identity in Supabase Auth with administrator-provided password
     auth_user_id = payload.auth_user_id
     auth_provisioned = False
     action_link = None
@@ -259,9 +285,10 @@ def admin_onboard_doctor(
     message = "Physician onboarded successfully."
 
     if not auth_user_id:
-        auth_user_id, auth_provisioned, action_link, message, is_newly_created = (
-            supabase_admin_service.invite_or_provision_doctor(
+        auth_user_id, auth_provisioned, message, is_newly_created = (
+            supabase_admin_service.create_doctor_user(
                 email=email_clean,
+                password=payload.password,
                 full_name=payload.full_name,
                 role="doctor",
             )
@@ -310,18 +337,8 @@ def admin_onboard_doctor(
                 )
                 db.add(doc_spec)
 
-        # Initialize standard outpatient consultation schedule (Monday-Friday 09:00 - 17:00, 30 min slots)
-        for day in range(0, 5):  # 0=Monday through 4=Friday
-            sched = DoctorSchedule(
-                doctor_id=new_doctor.id,
-                hospital_id=new_doctor.hospital_id,
-                day_of_week=day,
-                start_time=datetime.time(9, 0),
-                end_time=datetime.time(17, 0),
-                slot_duration_minutes=30,
-                is_active=True,
-            )
-            db.add(sched)
+        # Initialize standard outpatient consultation schedule via DoctorService (safe transaction)
+        doctor_service.create_default_schedules(db, new_doctor.id, overwrite=False)
 
         db.commit()
         db.refresh(new_profile)
@@ -411,6 +428,58 @@ def update_doctor_status(
         is_active=doctor.is_active,
         status=status_str,
         message=f"Physician account successfully {status_str}.",
+    )
+
+
+@router.post(
+    "/doctors/{doctor_id}/resend-invitation",
+    response_model=AdminResendInvitationResponse,
+    summary="Resend Physician Invitation (Admin Only)",
+    description=(
+        "Safely regenerates a secure invitation or password-setup link for an existing doctor "
+        "without generating duplicate Auth records."
+    ),
+)
+def resend_doctor_invitation(
+    doctor_id: str,
+    db: Session = Depends(get_db),
+    admin_user: AuthenticatedUser = Depends(require_admin),
+) -> AdminResendInvitationResponse:
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doctor:
+        raise NotFoundError(
+            message=f"Doctor with ID '{doctor_id}' not found.",
+            code="DOCTOR_NOT_FOUND",
+        )
+
+    # Verify hospital tenant access
+    verify_hospital_access(doctor.hospital_id, admin_user)
+
+    profile = db.query(Profile).filter(Profile.id == doctor.profile_id).first()
+    if not profile:
+        raise NotFoundError(
+            message=f"Profile associated with doctor '{doctor_id}' not found.",
+            code="PROFILE_NOT_FOUND",
+        )
+
+    action_link, message, auth_provisioned = supabase_admin_service.resend_or_generate_invitation(
+        email=profile.email,
+        full_name=profile.full_name,
+    )
+
+    logger.info(
+        f"AUDIT: Admin {admin_user.id} ({admin_user.email}) resent invitation for doctor {doctor.id} "
+        f"({profile.email}). Provisioned: {auth_provisioned}"
+    )
+
+    return AdminResendInvitationResponse(
+        doctor_id=doctor.id,
+        profile_id=profile.id,
+        full_name=profile.full_name,
+        email=profile.email,
+        action_link=action_link,
+        message=message,
+        auth_provisioned=auth_provisioned,
     )
 
 
@@ -575,4 +644,64 @@ def update_admin_doctor_schedules(
         db.rollback()
         logger.error(f"Failed to update consultation schedules for doctor {doctor_id}: {str(e)}")
         raise
+
+
+@router.post(
+    "/doctors/{doctor_id}/schedules/initialize-default",
+    response_model=List[DoctorScheduleResponse],
+    summary="Initialize Default Doctor Schedules (Admin Only)",
+    description="Initializes standard outpatient consultation hours (Mon-Fri 09:00 - 17:00, 30 min slots) for a physician. Idempotent.",
+)
+def initialize_doctor_default_schedule(
+    doctor_id: str,
+    overwrite: bool = False,
+    db: Session = Depends(get_db),
+    admin_user: AuthenticatedUser = Depends(require_admin),
+) -> List[DoctorScheduleResponse]:
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doctor:
+        raise NotFoundError(
+            message=f"Doctor with ID '{doctor_id}' not found.",
+            code="DOCTOR_NOT_FOUND",
+        )
+    verify_hospital_access(doctor.hospital_id, admin_user)
+
+    try:
+        schedules = doctor_service.create_default_schedules(
+            db, doctor_id=doctor.id, overwrite=overwrite
+        )
+        db.commit()
+        logger.info(
+            f"Admin {admin_user.id} initialized default schedules for doctor {doctor_id} ({len(schedules)} slots)."
+        )
+        return (
+            db.query(DoctorSchedule)
+            .filter(DoctorSchedule.doctor_id == doctor_id)
+            .order_by(DoctorSchedule.day_of_week, DoctorSchedule.start_time)
+            .all()
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to initialize default schedules for doctor {doctor_id}: {str(e)}")
+        raise
+
+
+@router.post(
+    "/doctors/repair-schedules",
+    summary="Repair Unscheduled Doctors (Admin Only)",
+    description="Identifies active doctors lacking schedules and optionally initializes default weekday schedules. Safe and idempotent.",
+)
+def repair_doctor_schedules(
+    hospital_id: Optional[str] = None,
+    dry_run: bool = False,
+    db: Session = Depends(get_db),
+    admin_user: AuthenticatedUser = Depends(require_admin),
+):
+    target_hospital = hospital_id or admin_user.hospital_id
+    if target_hospital:
+        verify_hospital_access(target_hospital, admin_user)
+    return doctor_service.repair_unscheduled_doctors(
+        db, hospital_id=target_hospital, dry_run=dry_run
+    )
+
 

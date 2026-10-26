@@ -95,6 +95,15 @@ export interface RecommendedDoctorProfile {
   hospital?: HospitalResponse | null;
   department?: DepartmentResponse | null;
   specialties: DoctorSpecialtyResponse[];
+  invitation_status?: string | null;
+  is_accepting_patients?: boolean;
+}
+
+export interface DoctorIntakeStatusResponse {
+  doctor_id: string;
+  is_accepting_patients: boolean;
+  status: string;
+  message: string;
 }
 
 export type DoctorResponse = RecommendedDoctorProfile;
@@ -138,6 +147,7 @@ export interface DoctorAvailabilityResponse {
   has_schedule?: boolean;
   schedule_configured?: boolean;
   is_fully_booked?: boolean;
+  next_available_date?: string | null;
   slots: AvailableSlot[];
 }
 
@@ -364,6 +374,16 @@ export interface DoctorLifecycleResponse {
   message: string;
 }
 
+export interface AdminResendInvitationResponse {
+  doctor_id: string;
+  profile_id: string;
+  full_name: string;
+  email: string;
+  action_link?: string | null;
+  message: string;
+  auth_provisioned: boolean;
+}
+
 export class DoctorService {
   /**
    * POST /api/v1/doctors/recommend
@@ -419,6 +439,26 @@ export class DoctorService {
   }
 
   /**
+   * PATCH /api/v1/doctors/{doctorId}/intake-status
+   * Updates clinic station patient intake availability.
+   */
+  async updateIntakeStatus(
+    doctorId: string,
+    isAcceptingPatients: boolean
+  ): Promise<DoctorIntakeStatusResponse> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/doctors/${encodeURIComponent(doctorId)}/intake-status`,
+      {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ is_accepting_patients: isAcceptingPatients }),
+      }
+    );
+    return handleResponse<DoctorIntakeStatusResponse>(res);
+  }
+
+  /**
    * GET /api/v1/doctors/admin/list
    * Authoritatively retrieves registered doctors for admin directory.
    */
@@ -467,6 +507,19 @@ export class DoctorService {
       headers,
     });
     return handleResponse<DoctorLifecycleResponse>(res);
+  }
+
+  /**
+   * POST /api/v1/admin/doctors/{doctorId}/resend-invitation
+   * Safely regenerates an invitation or password setup link without duplicate records.
+   */
+  async resendDoctorInvitation(doctorId: string): Promise<AdminResendInvitationResponse> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/doctors/${encodeURIComponent(doctorId)}/resend-invitation`, {
+      method: "POST",
+      headers,
+    });
+    return handleResponse<AdminResendInvitationResponse>(res);
   }
 
   /**
@@ -540,6 +593,57 @@ export class DoctorService {
       body: JSON.stringify({ schedules }),
     });
     return handleResponse<DoctorScheduleItem[]>(res);
+  }
+
+  /**
+   * POST /api/v1/admin/doctors/{doctorId}/schedules/initialize-default
+   * Initializes standard outpatient consultation hours (Mon-Fri 09:00 - 17:00, 30 min slots) for a physician.
+   */
+  async initializeDefaultSchedule(
+    doctorId: string,
+    overwrite: boolean = false
+  ): Promise<DoctorScheduleItem[]> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/admin/doctors/${doctorId}/schedules/initialize-default?overwrite=${overwrite}`,
+      {
+        method: "POST",
+        headers,
+      }
+    );
+    return handleResponse<DoctorScheduleItem[]>(res);
+  }
+
+  /**
+   * POST /api/v1/admin/doctors/repair-schedules
+   * Identifies unscheduled doctors and initializes default schedules.
+   */
+  async repairSchedules(
+    hospitalId?: string,
+    dryRun: boolean = false
+  ): Promise<{
+    dry_run: boolean;
+    unscheduled_count: number;
+    repaired_count: number;
+    doctors: Array<{ doctor_id: string; doctor_name: string; schedules_created?: number }>;
+  }> {
+    const headers = await getAuthHeaders();
+    const query = new URLSearchParams();
+    if (hospitalId) query.append("hospital_id", hospitalId);
+    if (dryRun) query.append("dry_run", "true");
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/admin/doctors/repair-schedules?${query.toString()}`,
+      {
+        method: "POST",
+        headers,
+      }
+    );
+    return handleResponse<{
+      dry_run: boolean;
+      unscheduled_count: number;
+      repaired_count: number;
+      doctors: Array<{ doctor_id: string; doctor_name: string; schedules_created?: number }>;
+    }>(res);
   }
 
   getAllDoctors(): Doctor[] {

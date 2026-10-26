@@ -44,5 +44,21 @@ class DoctorResponse(DoctorBase):
     hospital: Optional[HospitalResponse] = None
     department: Optional[DepartmentResponse] = None
     specialties: List[DoctorSpecialtyResponse] = []
+    invitation_status: Optional[str] = "active"
+    is_accepting_patients: bool = True
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DoctorIntakeStatusUpdate(BaseModel):
+    is_accepting_patients: bool = Field(
+        ...,
+        description="Whether the doctor is actively accepting new patient triage intakes at their clinic station",
+    )
+
+
+class DoctorIntakeStatusResponse(BaseModel):
+    doctor_id: str
+    is_accepting_patients: bool
+    status: str
+    message: str

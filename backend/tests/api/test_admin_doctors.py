@@ -52,12 +52,13 @@ def test_admin_list_doctors_authorized_for_admin(client: TestClient, auth_seeded
         assert "specialties" in doc
 
 
-def test_admin_onboard_doctor_invitation_success(client: TestClient, auth_seeded_db: Session, admin_headers: dict):
-    """Admin onboards doctor, verifies action link generation, profile linkage, and license assignment."""
+def test_admin_onboard_doctor_password_provisioning_success(client: TestClient, auth_seeded_db: Session, admin_headers: dict):
+    """Admin onboards doctor with password, verifying UUID linkage, doctor role, and lack of password persistence."""
     unique_suffix = str(uuid.uuid4())[:8]
     payload = {
         "full_name": f"Dr. Elena Rostova {unique_suffix}",
         "email": f"elena.rostova.{unique_suffix}@hospital.org",
+        "password": "SecurePassword123!",
         "license_number": f"LIC-ELENA-{unique_suffix}",
         "hospital_id": "hosp-001",
         "years_of_experience": 10,
@@ -74,9 +75,8 @@ def test_admin_onboard_doctor_invitation_success(client: TestClient, auth_seeded
     assert data["role"] == "doctor"
     assert data["email"] == payload["email"]
     assert data["auth_user_id"] is not None
-    assert data["invitation_sent"] is True
-    assert data["action_link"] is not None
-    assert "token" in data["action_link"] or "http" in data["action_link"]
+    assert data["invitation_sent"] is False
+    assert data["action_link"] is None
 
     # Verify database records
     profile = auth_seeded_db.query(Profile).filter(Profile.id == data["profile_id"]).first()
@@ -84,32 +84,49 @@ def test_admin_onboard_doctor_invitation_success(client: TestClient, auth_seeded
     assert profile.role == UserRole.DOCTOR
     assert profile.auth_user_id == data["auth_user_id"]
     assert profile.is_active is True
+    # Password must NEVER be persisted in PostgreSQL tables
+    assert not hasattr(profile, "password") or getattr(profile, "password", None) is None
 
     doctor = auth_seeded_db.query(Doctor).filter(Doctor.id == data["entity_id"]).first()
     assert doctor is not None
     assert doctor.license_number == payload["license_number"]
     assert doctor.is_active is True
+    assert not hasattr(doctor, "password") or getattr(doctor, "password", None) is None
 
 
-def test_admin_onboard_doctor_existing_auth_user(client: TestClient, auth_seeded_db: Session, admin_headers: dict):
-    """When an unlinked Auth user already exists in Supabase, reuses their real UUID and issues password setup."""
+def test_admin_onboard_doctor_password_validation_rules(client: TestClient, auth_seeded_db: Session, admin_headers: dict):
+    """Rejects onboarding when password is missing or shorter than eight characters."""
+    base_payload = {
+        "full_name": "Dr. Validation Test",
+        "email": "validation.doc@hospital.org",
+        "license_number": "LIC-VAL-001",
+        "hospital_id": "hosp-001",
+    }
+
+    # 1. Missing password
+    res_missing = client.post("/api/v1/admin/doctors/onboard", headers=admin_headers, json=base_payload)
+    assert res_missing.status_code == 422
+
+    # 2. Short password (< 8 chars)
+    payload_short = {**base_payload, "password": "short"}
+    res_short = client.post("/api/v1/admin/doctors/onboard", headers=admin_headers, json=payload_short)
+    assert res_short.status_code == 422
+
+
+def test_admin_onboard_doctor_reject_existing_auth_user(client: TestClient, auth_seeded_db: Session, admin_headers: dict):
+    """When an Auth user already exists in Supabase, rejects onboarding rather than overwriting password."""
     existing_auth_uuid = str(uuid.uuid4())
     unique_email = f"existing.auth.{str(uuid.uuid4())[:8]}@hospital.org"
 
     # Mock Supabase admin service to return existing auth user
     with patch(
-        "app.services.supabase_admin_service.supabase_admin_service.invite_or_provision_doctor",
-        return_value=(
-            existing_auth_uuid,
-            True,
-            f"https://supabase.co/auth/v1/verify?token=recovery-{existing_auth_uuid}",
-            "Existing Supabase Auth account linked. Password-setup link generated.",
-            False,
-        ),
+        "app.services.supabase_admin_service.supabase_admin_service.get_user_by_email",
+        return_value={"id": existing_auth_uuid, "user_metadata": {"role": "doctor"}},
     ):
         payload = {
             "full_name": "Dr. Existing Auth",
             "email": unique_email,
+            "password": "SecurePassword123!",
             "license_number": f"LIC-AUTH-{str(uuid.uuid4())[:8]}",
             "hospital_id": "hosp-001",
             "years_of_experience": 7,
@@ -117,14 +134,9 @@ def test_admin_onboard_doctor_existing_auth_user(client: TestClient, auth_seeded
             "languages": "en",
         }
         response = client.post("/api/v1/admin/doctors/onboard", headers=admin_headers, json=payload)
-        assert response.status_code == 201
+        assert response.status_code == 409
         data = response.json()
-        assert data["auth_user_id"] == existing_auth_uuid
-        assert data["invitation_sent"] is True
-
-        # Database profile must match the real existing UUID
-        profile = auth_seeded_db.query(Profile).filter(Profile.id == data["profile_id"]).first()
-        assert profile.auth_user_id == existing_auth_uuid
+        assert data["error"]["code"] == "AUTH_USER_ALREADY_EXISTS"
 
 
 def test_admin_onboard_doctor_reject_existing_patient_or_admin(client: TestClient, auth_seeded_db: Session, admin_headers: dict):
@@ -136,6 +148,7 @@ def test_admin_onboard_doctor_reject_existing_patient_or_admin(client: TestClien
         payload = {
             "full_name": "Infiltrator Doctor",
             "email": "existing.patient@example.com",
+            "password": "SecurePassword123!",
             "license_number": "LIC-ATTEMPT-01",
             "hospital_id": "hosp-001",
         }
@@ -153,6 +166,7 @@ def test_admin_onboard_doctor_duplicate_email_or_license(client: TestClient, aut
     payload1 = {
         "full_name": "Dr. First",
         "email": unique_email,
+        "password": "SecurePassword123!",
         "license_number": license_no,
         "hospital_id": "hosp-001",
     }
@@ -163,6 +177,7 @@ def test_admin_onboard_doctor_duplicate_email_or_license(client: TestClient, aut
     payload_dup_email = {
         "full_name": "Dr. Duplicate Email",
         "email": unique_email,
+        "password": "SecurePassword123!",
         "license_number": f"LIC-DIFF-{str(uuid.uuid4())[:8]}",
         "hospital_id": "hosp-001",
     }
@@ -174,6 +189,7 @@ def test_admin_onboard_doctor_duplicate_email_or_license(client: TestClient, aut
     payload_dup_license = {
         "full_name": "Dr. Duplicate License",
         "email": f"diff.email.{str(uuid.uuid4())[:8]}@hospital.org",
+        "password": "SecurePassword123!",
         "license_number": license_no,
         "hospital_id": "hosp-001",
     }
@@ -188,12 +204,11 @@ def test_admin_onboard_doctor_transaction_rollback_cleanup(client: TestClient, a
     deleted_ids = []
 
     with patch(
-        "app.services.supabase_admin_service.supabase_admin_service.invite_or_provision_doctor",
+        "app.services.supabase_admin_service.supabase_admin_service.create_doctor_user",
         return_value=(
             newly_created_auth_id,
             True,
-            "http://invite.link",
-            "User invited",
+            "User created",
             True,  # is_newly_created
         ),
     ), patch(
@@ -206,6 +221,7 @@ def test_admin_onboard_doctor_transaction_rollback_cleanup(client: TestClient, a
         payload = {
             "full_name": "Dr. Rollback Test",
             "email": f"rollback.{str(uuid.uuid4())[:8]}@hospital.org",
+            "password": "SecurePassword123!",
             "license_number": f"LIC-RB-{str(uuid.uuid4())[:8]}",
             "hospital_id": "hosp-001",
         }
@@ -600,4 +616,157 @@ def test_admin_schedules_forbidden_for_patient_and_doctor(
 
     res_doc = client.get("/api/v1/admin/doctors/any-id/schedules", headers=doctor_headers)
     assert res_doc.status_code == 403
+
+
+def test_admin_resend_doctor_invitation_success(
+    client: TestClient, auth_seeded_db: Session, admin_headers: dict
+):
+    """Admin triggers resend invitation for an existing doctor, returning safe link."""
+    doc_auth_id = f"doc-resend-{str(uuid.uuid4())[:8]}"
+    email = f"resend.{str(uuid.uuid4())[:8]}@hospital.org"
+    prof = Profile(
+        auth_user_id=doc_auth_id,
+        role=UserRole.DOCTOR,
+        full_name="Dr. Resend Target",
+        email=email,
+        hospital_id="hosp-001",
+        is_active=True,
+    )
+    auth_seeded_db.add(prof)
+    auth_seeded_db.flush()
+
+    doc = Doctor(
+        profile_id=prof.id,
+        hospital_id="hosp-001",
+        license_number=f"LIC-RESEND-{str(uuid.uuid4())[:8]}",
+        years_of_experience=6,
+        is_active=True,
+    )
+    auth_seeded_db.add(doc)
+    auth_seeded_db.commit()
+
+    with patch(
+        "app.services.supabase_admin_service.supabase_admin_service.resend_or_generate_invitation",
+        return_value=(
+            f"http://localhost:3000/account-setup?mode=set-password&token=recovery-{doc_auth_id}",
+            "Physician invitation / password-setup link regenerated successfully.",
+            True,
+        ),
+    ):
+        res = client.post(
+            f"/api/v1/admin/doctors/{doc.id}/resend-invitation",
+            headers=admin_headers,
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert data["doctor_id"] == doc.id
+        assert data["email"] == email
+        assert data["action_link"] is not None
+        assert "/account-setup?mode=set-password" in data["action_link"]
+        assert data["auth_provisioned"] is True
+
+
+def test_admin_resend_doctor_invitation_forbidden_for_patient_and_doctor(
+    client: TestClient, auth_seeded_db: Session, patient_headers: dict, doctor_headers: dict
+):
+    """Non-administrators cannot trigger invitation resends."""
+    res_pat = client.post("/api/v1/admin/doctors/any-id/resend-invitation", headers=patient_headers)
+    assert res_pat.status_code == 403
+
+    res_doc = client.post("/api/v1/admin/doctors/any-id/resend-invitation", headers=doctor_headers)
+    assert res_doc.status_code == 403
+
+
+def test_admin_onboard_doctor_reject_duplicate_auth_user_id(
+    client: TestClient, auth_seeded_db: Session, admin_headers: dict
+):
+    """Rejects onboarding if auth_user_id is already linked to another Profile."""
+    existing_auth_id = str(uuid.uuid4())
+    prof = Profile(
+        auth_user_id=existing_auth_id,
+        role=UserRole.DOCTOR,
+        full_name="Dr. Already Linked",
+        email=f"linked.{str(uuid.uuid4())[:8]}@hospital.org",
+        hospital_id="hosp-001",
+        is_active=True,
+    )
+    auth_seeded_db.add(prof)
+    auth_seeded_db.commit()
+
+    payload = {
+        "full_name": "Dr. Conflict Identity",
+        "email": f"conflict.{str(uuid.uuid4())[:8]}@hospital.org",
+        "password": "SecurePassword123!",
+        "license_number": f"LIC-CONF-{str(uuid.uuid4())[:8]}",
+        "hospital_id": "hosp-001",
+        "auth_user_id": existing_auth_id,
+    }
+    res = client.post("/api/v1/admin/doctors/onboard", headers=admin_headers, json=payload)
+    assert res.status_code == 409
+    assert res.json()["error"]["code"] == "AUTH_USER_ALREADY_LINKED"
+
+
+def test_inactive_doctor_rejected_from_protected_api(
+    client: TestClient, auth_seeded_db: Session
+):
+    """A deactivated doctor cannot access protected doctor APIs, even with an active bearer token."""
+    doc_auth_id = f"doc-inactive-{str(uuid.uuid4())[:8]}"
+    prof = Profile(
+        auth_user_id=doc_auth_id,
+        role=UserRole.DOCTOR,
+        full_name="Dr. Deactivated User",
+        email=f"inactive.{str(uuid.uuid4())[:8]}@hospital.org",
+        hospital_id="hosp-001",
+        is_active=False,
+    )
+    auth_seeded_db.add(prof)
+    auth_seeded_db.flush()
+
+    doc = Doctor(
+        profile_id=prof.id,
+        hospital_id="hosp-001",
+        license_number=f"LIC-INACT-{str(uuid.uuid4())[:8]}",
+        years_of_experience=5,
+        is_active=False,
+    )
+    auth_seeded_db.add(doc)
+    auth_seeded_db.commit()
+
+    # Generate token for this doctor
+    token = create_access_token(
+        subject=doc_auth_id,
+        role="doctor",
+        additional_claims={"email": prof.email},
+    )
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Attempt to access a protected endpoint
+    res = client.get("/api/v1/auth/me", headers=headers)
+    assert res.status_code == 403
+    assert res.json()["error"]["code"] == "ACCOUNT_INACTIVE"
+
+
+def test_supabase_admin_service_never_falls_back_to_random_uuid_for_existing_user():
+    """Verifies that supabase_admin_service never invents a random UUID if existing user lookup fails."""
+    import pytest
+    from unittest.mock import MagicMock
+    from app.services.supabase_admin_service import SupabaseAdminService
+
+    service = SupabaseAdminService()
+    with patch.object(SupabaseAdminService, "is_configured", True):
+        # Mock post to return 422 (user exists), but get_user_by_email returns None and rec_res returns no id
+        mock_post_res1 = MagicMock()
+        mock_post_res1.status_code = 422
+        mock_post_res1.text = "User already registered"
+
+        mock_post_res2 = MagicMock()
+        mock_post_res2.status_code = 200
+        mock_post_res2.json.return_value = {"action_link": "https://example.com/recovery"}
+
+        with patch("httpx.Client.post", side_effect=[mock_post_res1, mock_post_res2]):
+            with patch.object(service, "get_user_by_email", return_value=None):
+                with pytest.raises(RuntimeError) as exc_info:
+                    service.invite_or_provision_doctor("unresolvable@hospital.org", "Dr. Test")
+                assert "Refusing to generate a random UUID" in str(exc_info.value)
+
 

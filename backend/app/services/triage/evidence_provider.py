@@ -1,5 +1,7 @@
 import json
 import os
+from pathlib import Path
+import sys
 from typing import Any, Dict, List, Optional, Set, Tuple
 import zipfile
 
@@ -53,43 +55,75 @@ class DDXPlusEvidenceProvider:
         self._parent_evidences: Dict[str, str] = {}
         self._child_evidences: Dict[str, Set[str]] = {}
         self._loaded: bool = False
+        self._loaded_path: Optional[str] = None
         self._load_ontology()
 
     def _load_ontology(self) -> None:
         if self._loaded:
             return
 
-        candidate_paths = [
-            self.data_path,
-            r"D:\22687585.zip",
-            os.path.join(os.path.dirname(__file__), "..", "..", "data", "22687585.zip"),
-            os.path.join(os.path.dirname(__file__), "..", "..", "data", "ddxplus"),
-        ]
+        candidate_paths: List[Path] = []
+        if self.data_path:
+            candidate_paths.append(Path(self.data_path))
 
-        loaded_path = None
-        for path in candidate_paths:
-            if path and os.path.exists(path):
-                loaded_path = path
-                break
+        # Standard Linux container locations (Render / Docker)
+        candidate_paths.extend([
+            Path("/app/data/22687585.zip"),
+            Path("/app/data/release_evidences.json"),
+            Path("/app/data/ddxplus/release_evidences.json"),
+            Path("/app/data/ddxplus"),
+        ])
+
+        # Relative project locations (local / git workspace)
+        base_dir = Path(__file__).resolve().parents[3]  # backend root
+        candidate_paths.extend([
+            base_dir / "data" / "22687585.zip",
+            base_dir / "data" / "release_evidences.json",
+            base_dir / "data" / "ddxplus" / "release_evidences.json",
+            base_dir / "data" / "ddxplus",
+        ])
+
+        # Host-level local fallback (Windows developer environment)
+        if sys.platform == "win32":
+            candidate_paths.append(Path(r"D:\22687585.zip"))
+
+        loaded_path: Optional[Path] = None
+        for candidate in candidate_paths:
+            try:
+                if candidate.exists():
+                    loaded_path = candidate
+                    break
+            except Exception:
+                continue
 
         if not loaded_path:
+            checked_strs = [str(p) for p in candidate_paths]
             logger.warning(
-                f"Clinical evidence ontology file not found at '{self.data_path}' or candidate locations. "
-                "Evidence provider initialized in empty mode."
+                f"Clinical evidence ontology file not found. Checked candidate paths: {checked_strs}. "
+                "Evidence provider initialized in empty mode. Triage will proceed with fallback adaptive intake."
             )
             return
 
         try:
-            if zipfile.is_zipfile(loaded_path):
+            if loaded_path.is_file() and zipfile.is_zipfile(loaded_path):
                 with zipfile.ZipFile(loaded_path, "r") as z:
                     if "release_evidences.json" in z.namelist():
                         ev_bytes = z.read("release_evidences.json")
                         self._evidences = json.loads(ev_bytes.decode("utf-8"))
-            elif os.path.isdir(loaded_path):
-                ev_file = os.path.join(loaded_path, "release_evidences.json")
-                if os.path.exists(ev_file):
+            elif loaded_path.is_file() and loaded_path.suffix.lower() == ".json":
+                with open(loaded_path, "r", encoding="utf-8") as f:
+                    self._evidences = json.load(f)
+            elif loaded_path.is_dir():
+                ev_file = loaded_path / "release_evidences.json"
+                if ev_file.exists():
                     with open(ev_file, "r", encoding="utf-8") as f:
                         self._evidences = json.load(f)
+
+            if not self._evidences:
+                logger.warning(
+                    f"Ontology file at '{loaded_path}' did not contain valid 'release_evidences.json' entries."
+                )
+                return
 
             # Build parent-child dependency mapping from code_question
             for ev_id, ev_info in self._evidences.items():
@@ -99,6 +133,7 @@ class DDXPlusEvidenceProvider:
                     self._child_evidences.setdefault(code_q, set()).add(ev_id)
 
             self._loaded = True
+            self._loaded_path = str(loaded_path)
             logger.info(
                 f"Clinical evidence ontology successfully indexed: {len(self._evidences)} evidences "
                 f"loaded from '{loaded_path}'."
@@ -109,6 +144,10 @@ class DDXPlusEvidenceProvider:
     @property
     def is_loaded(self) -> bool:
         return self._loaded and len(self._evidences) > 0
+
+    @property
+    def loaded_path(self) -> Optional[str]:
+        return self._loaded_path
 
     def get_evidence(self, evidence_id: str) -> Optional[Dict[str, Any]]:
         """Lookup evidence metadata by base ID or composite code (e.g. 'E_53' or 'adaptive_functional_impact')."""

@@ -7,6 +7,7 @@ import {
   HospitalResponse,
   DepartmentResponse,
   SpecialtyResponse,
+  DoctorScheduleItem,
 } from "@/services/doctors";
 import { authService } from "@/services/auth";
 import { useAuth } from "@/context/AuthContext";
@@ -24,6 +25,7 @@ import {
   Users,
   Filter,
   UserPlus,
+  Calendar,
   X,
   Phone,
   Layers,
@@ -37,8 +39,9 @@ import {
   Copy,
   AlertTriangle,
   ShieldCheck,
-  Calendar,
   Clock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,6 +69,10 @@ export default function AdminDoctorsPage() {
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [onboardFullName, setOnboardFullName] = useState("");
   const [onboardEmail, setOnboardEmail] = useState("");
+  const [onboardPassword, setOnboardPassword] = useState("");
+  const [onboardConfirmPassword, setOnboardConfirmPassword] = useState("");
+  const [showOnboardPassword, setShowOnboardPassword] = useState(false);
+  const [showOnboardConfirmPassword, setShowOnboardConfirmPassword] = useState(false);
   const [onboardLicense, setOnboardLicense] = useState("");
   const [onboardPhone, setOnboardPhone] = useState("");
   const [onboardHospitalId, setOnboardHospitalId] = useState("");
@@ -97,23 +104,36 @@ export default function AdminDoctorsPage() {
   const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
   const [deleteHasClinicalHistory, setDeleteHasClinicalHistory] = useState(false);
 
-  // Schedule Modal State
-  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
-  const [selectedDoctorForSchedule, setSelectedDoctorForSchedule] = useState<DoctorResponse | null>(null);
-  const [doctorSchedules, setDoctorSchedules] = useState<{
-    day_of_week: number;
-    start_time: string;
-    end_time: string;
-    slot_duration_minutes: number;
-    is_active: boolean;
-  }[]>([]);
-  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
-  const [isScheduleSubmitting, setIsScheduleSubmitting] = useState(false);
-  const [scheduleModalError, setScheduleModalError] = useState<string | null>(null);
-  const [scheduleModalSuccess, setScheduleModalSuccess] = useState<string | null>(null);
+  // Resend Invite Modal State
+  const [resendModalOpen, setResendModalOpen] = useState(false);
+  const [selectedDoctorForResend, setSelectedDoctorForResend] = useState<DoctorResponse | null>(null);
+  const [resendActionLink, setResendActionLink] = useState<string | null>(null);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendError, setResendError] = useState<string | null>(null);
+  const [copiedResendLink, setCopiedResendLink] = useState(false);
 
   // Global notification banner for actions
   const [actionNotice, setActionNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // Schedule Management Modal State
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [selectedDoctorForSchedule, setSelectedDoctorForSchedule] = useState<DoctorResponse | null>(null);
+  const [doctorSchedules, setDoctorSchedules] = useState<DoctorScheduleItem[]>([]);
+  const [isLoadingSchedules, setIsLoadingSchedules] = useState(false);
+  const [isSavingSchedules, setIsSavingSchedules] = useState(false);
+  const [scheduleModalError, setScheduleModalError] = useState<string | null>(null);
+  const [scheduleModalSuccess, setScheduleModalSuccess] = useState<string | null>(null);
+
+  // Repair Modal State
+  const [repairModalOpen, setRepairModalOpen] = useState(false);
+  const [repairLoading, setRepairLoading] = useState(false);
+  const [repairDryRunData, setRepairDryRunData] = useState<{
+    dry_run: boolean;
+    unscheduled_count: number;
+    doctors: Array<{ doctor_id: string; doctor_name: string }>;
+  } | null>(null);
+  const [repairError, setRepairError] = useState<string | null>(null);
+  const [repairSuccess, setRepairSuccess] = useState<string | null>(null);
 
   // Tenant restriction: hospital administrators are locked to user.hospital_id
   const isTenantRestricted = Boolean(user?.hospital_id);
@@ -283,6 +303,18 @@ export default function AdminDoctorsPage() {
       errors.email = "A valid professional email address is required.";
     }
 
+    if (!onboardPassword) {
+      errors.password = "Password is required.";
+    } else if (onboardPassword.length < 8) {
+      errors.password = "Password must be at least 8 characters long.";
+    }
+
+    if (!onboardConfirmPassword) {
+      errors.confirmPassword = "Confirm password is required.";
+    } else if (onboardPassword !== onboardConfirmPassword) {
+      errors.confirmPassword = "Passwords do not match.";
+    }
+
     const trimmedLicense = onboardLicense.trim();
     if (!trimmedLicense || trimmedLicense.length < 2) {
       errors.license = "Medical license number is required (at least 2 characters).";
@@ -332,6 +364,7 @@ export default function AdminDoctorsPage() {
       const payload = {
         full_name: onboardFullName.trim(),
         email: onboardEmail.trim(),
+        password: onboardPassword,
         license_number: onboardLicense.trim(),
         hospital_id: effectiveHospitalId,
         department_id: onboardDepartmentId ? onboardDepartmentId : null,
@@ -347,6 +380,12 @@ export default function AdminDoctorsPage() {
       };
 
       const res = await authService.adminOnboardDoctor(payload);
+
+      // Clear both password fields immediately after successful submission
+      setOnboardPassword("");
+      setOnboardConfirmPassword("");
+      setShowOnboardPassword(false);
+      setShowOnboardConfirmPassword(false);
 
       setOnboardSuccess(`Physician ${onboardFullName.trim()} onboarded successfully!`);
       if (res.action_link) {
@@ -383,6 +422,10 @@ export default function AdminDoctorsPage() {
   const handleCloseModal = () => {
     if (isOnboardSubmitting) return;
     setIsOnboardingOpen(false);
+    setOnboardPassword("");
+    setOnboardConfirmPassword("");
+    setShowOnboardPassword(false);
+    setShowOnboardConfirmPassword(false);
     setOnboardError(null);
     setOnboardSuccess(null);
     setOnboardActionLink(null);
@@ -422,6 +465,34 @@ export default function AdminDoctorsPage() {
     }
   };
 
+  // Resend Doctor Invitation Handler
+  const handleOpenResendModal = async (doc: DoctorResponse) => {
+    setSelectedDoctorForResend(doc);
+    setResendActionLink(null);
+    setResendError(null);
+    setCopiedResendLink(false);
+    setResendModalOpen(true);
+    setResendLoading(true);
+
+    try {
+      const res = await doctorService.resendDoctorInvitation(doc.id);
+      if (res.action_link) {
+        setResendActionLink(res.action_link);
+      }
+      setActionNotice({
+        type: "success",
+        text: `Invitation link regenerated for ${doc.profile?.full_name || doc.license_number}.`,
+      });
+      setTimeout(() => setActionNotice(null), 5000);
+      await loadDoctors();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to regenerate physician invitation";
+      setResendError(msg);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   // Delete Handler
   const handleDeleteDoctor = async () => {
     if (!selectedDoctorForDelete) return;
@@ -456,77 +527,92 @@ export default function AdminDoctorsPage() {
     }
   };
 
-  // Schedule Modal Handlers
-  const openScheduleModal = async (doc: DoctorResponse) => {
-    setSelectedDoctorForSchedule(doc);
-    setScheduleModalError(null);
-    setScheduleModalSuccess(null);
+  const openScheduleModal = async (doctor: DoctorResponse) => {
+    setSelectedDoctorForSchedule(doctor);
     setScheduleModalOpen(true);
     setIsLoadingSchedules(true);
-
+    setScheduleModalError(null);
+    setScheduleModalSuccess(null);
     try {
-      const existing = await doctorService.getDoctorSchedules(doc.id);
-      const days = [0, 1, 2, 3, 4, 5, 6].map((dayIndex) => {
-        const found = existing.find((s) => s.day_of_week === dayIndex);
-        if (found) {
-          return {
-            day_of_week: dayIndex,
-            start_time: found.start_time.slice(0, 5),
-            end_time: found.end_time.slice(0, 5),
-            slot_duration_minutes: found.slot_duration_minutes || 30,
-            is_active: found.is_active,
-          };
-        }
-        return {
-          day_of_week: dayIndex,
-          start_time: "09:00",
-          end_time: "17:00",
-          slot_duration_minutes: 30,
-          is_active: false,
-        };
-      });
-      setDoctorSchedules(days);
+      const data = await doctorService.getDoctorSchedules(doctor.id);
+      setDoctorSchedules(data || []);
     } catch (err: unknown) {
       setScheduleModalError(
-        err instanceof Error ? err.message : "Failed to load physician schedules"
+        err instanceof Error ? err.message : "Failed to load doctor consultation schedules."
       );
+      setDoctorSchedules([]);
     } finally {
       setIsLoadingSchedules(false);
     }
   };
 
-  const handleSaveSchedules = async () => {
+  const handleInitializeDefaultSchedule = async () => {
     if (!selectedDoctorForSchedule) return;
-    setIsScheduleSubmitting(true);
+    setIsSavingSchedules(true);
     setScheduleModalError(null);
     setScheduleModalSuccess(null);
-
     try {
-      const activeSchedules = doctorSchedules.filter((d) => d.is_active);
-      await doctorService.updateDoctorSchedules(
-        selectedDoctorForSchedule.id,
-        activeSchedules.map((s) => ({
-          day_of_week: s.day_of_week,
-          start_time: s.start_time.length === 5 ? `${s.start_time}:00` : s.start_time,
-          end_time: s.end_time.length === 5 ? `${s.end_time}:00` : s.end_time,
-          slot_duration_minutes: Number(s.slot_duration_minutes) || 30,
-          is_active: true,
-        }))
+      const updated = await doctorService.initializeDefaultSchedule(selectedDoctorForSchedule.id, false);
+      setDoctorSchedules(updated);
+      setScheduleModalSuccess("Default weekday consultation hours (Mon-Fri 09:00 - 17:00) initialized successfully!");
+    } catch (err: unknown) {
+      setScheduleModalError(
+        err instanceof Error ? err.message : "Failed to initialize default schedule."
       );
-      setScheduleModalSuccess("Consultation schedules successfully saved.");
-      setActionNotice({
-        type: "success",
-        text: `Consultation schedule updated for ${selectedDoctorForSchedule.profile?.full_name}.`,
-      });
-      setTimeout(() => {
-        setScheduleModalOpen(false);
-      }, 700);
+    } finally {
+      setIsSavingSchedules(false);
+    }
+  };
+
+  const handleSaveSchedules = async () => {
+    if (!selectedDoctorForSchedule) return;
+    setIsSavingSchedules(true);
+    setScheduleModalError(null);
+    setScheduleModalSuccess(null);
+    try {
+      const updated = await doctorService.updateDoctorSchedules(selectedDoctorForSchedule.id, doctorSchedules);
+      setDoctorSchedules(updated);
+      setScheduleModalSuccess("Consultation schedules updated successfully!");
     } catch (err: unknown) {
       setScheduleModalError(
         err instanceof Error ? err.message : "Failed to update consultation schedules."
       );
     } finally {
-      setIsScheduleSubmitting(false);
+      setIsSavingSchedules(false);
+    }
+  };
+
+  const handleOpenRepairModal = async () => {
+    setRepairModalOpen(true);
+    setRepairLoading(true);
+    setRepairError(null);
+    setRepairSuccess(null);
+    try {
+      const data = await doctorService.repairSchedules(effectiveHospitalId || undefined, true);
+      setRepairDryRunData(data);
+    } catch (err: unknown) {
+      setRepairError(
+        err instanceof Error ? err.message : "Failed to preview unscheduled doctors."
+      );
+    } finally {
+      setRepairLoading(false);
+    }
+  };
+
+  const handleExecuteRepair = async () => {
+    setRepairLoading(true);
+    setRepairError(null);
+    setRepairSuccess(null);
+    try {
+      const result = await doctorService.repairSchedules(effectiveHospitalId || undefined, false);
+      setRepairSuccess(`Successfully repaired ${result.repaired_count} unscheduled doctor(s)!`);
+      loadDoctors();
+    } catch (err: unknown) {
+      setRepairError(
+        err instanceof Error ? err.message : "Failed to repair doctor schedules."
+      );
+    } finally {
+      setRepairLoading(false);
     }
   };
 
@@ -572,6 +658,19 @@ export default function AdminDoctorsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            id="repair-schedules-btn"
+            data-testid="repair-schedules-btn"
+            size="sm"
+            variant="outline"
+            onClick={handleOpenRepairModal}
+            className="gap-2 text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-semibold"
+            title="Inspect and repair unscheduled doctors"
+          >
+            <Calendar size={14} />
+            Repair Schedules
+          </Button>
+
           <Button
             id="onboard-physician-btn"
             data-testid="onboard-physician-btn"
@@ -793,7 +892,6 @@ export default function AdminDoctorsPage() {
                   <th className="px-4 py-3.5">Specialties</th>
                   <th className="px-4 py-3.5">Department & Facility</th>
                   <th className="px-4 py-3.5">Experience & Rating</th>
-                  <th className="px-4 py-3.5">Consultation & Lang</th>
                   <th className="px-4 py-3.5">Status</th>
                   <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
@@ -900,38 +998,72 @@ export default function AdminDoctorsPage() {
                         </div>
                       </td>
 
-                      {/* Consultation Mode & Languages */}
-                      <td className="px-4 py-4 text-slate-600">
-                        <div className="space-y-1">
-                          <span className="inline-block uppercase font-bold text-[10px] tracking-wider text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-100">
-                            {doc.consultation_mode === "both"
-                              ? "In-Person & Video"
-                              : doc.consultation_mode}
-                          </span>
-                          <span className="text-[11px] text-slate-400 block">
-                            {doc.languages?.toUpperCase() || "EN"}
-                          </span>
-                        </div>
-                      </td>
-
-                      {/* Status Badge */}
+                      {/* Status & Invitation Badge */}
                       <td className="px-4 py-4">
-                        {doc.is_active ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                            Active
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
-                            <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
-                            Inactive
-                          </span>
-                        )}
+                        <div className="space-y-1">
+                          {doc.is_active ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                              Active
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+                              <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
+                              Inactive
+                            </span>
+                          )}
+
+                          {doc.invitation_status === "pending" ? (
+                            <span
+                              id={`invite-badge-${doc.id}`}
+                              data-testid={`invite-badge-${doc.id}`}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 block w-fit"
+                              title="Physician invitation sent, pending initial password setup"
+                            >
+                              <Clock size={10} className="text-amber-600 shrink-0" />
+                              Invite Pending
+                            </span>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sky-50 text-sky-700 border border-sky-200 block w-fit"
+                              title="Account credentials provisioned and active"
+                            >
+                              <CheckCircle2 size={10} className="text-sky-600 shrink-0" />
+                              Active
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Actions */}
                       <td className="px-4 py-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          <Button
+                            id={`resend-invite-doc-${doc.id}`}
+                            data-testid={`resend-invite-doc-${doc.id}`}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleOpenResendModal(doc)}
+                            className="text-[11px] h-7 px-2 border-indigo-300 text-indigo-800 hover:bg-indigo-50 gap-1 font-semibold"
+                            title="Regenerate secure invitation link"
+                          >
+                            <KeyRound size={12} />
+                            Resend Invite
+                          </Button>
+
+                          <Button
+                            id={`schedule-doc-${doc.id}`}
+                            data-testid={`schedule-doc-${doc.id}`}
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openScheduleModal(doc)}
+                            className="text-[11px] h-7 px-2 border-sky-300 text-sky-800 hover:bg-sky-50 gap-1 font-semibold"
+                            title="Manage consultation hours & weekly schedules"
+                          >
+                            <Calendar size={12} />
+                            Schedule
+                          </Button>
+
                           {doc.is_active ? (
                             <Button
                               id={`deactivate-doc-${doc.id}`}
@@ -969,19 +1101,6 @@ export default function AdminDoctorsPage() {
                               Reactivate
                             </Button>
                           )}
-
-                          <Button
-                            id={`manage-schedule-doc-${doc.id}`}
-                            data-testid={`manage-schedule-doc-${doc.id}`}
-                            variant="outline"
-                            size="sm"
-                            onClick={() => openScheduleModal(doc)}
-                            className="text-[11px] h-7 px-2 border-sky-300 text-sky-800 hover:bg-sky-50 gap-1 font-semibold"
-                            title="Manage weekly consultation schedule"
-                          >
-                            <Calendar size={12} />
-                            Schedule
-                          </Button>
 
                           <Button
                             id={`delete-doc-${doc.id}`}
@@ -1194,6 +1313,93 @@ export default function AdminDoctorsPage() {
                     />
                     {validationErrors.email && (
                       <span className="text-[10px] text-rose-600 block">{validationErrors.email}</span>
+                    )}
+                  </div>
+
+                  {/* Password */}
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="onboard-password-input"
+                      className="font-semibold text-slate-700 flex items-center justify-between"
+                    >
+                      <span>
+                        Password <span className="text-rose-500">*</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-normal">Min. 8 characters</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="onboard-password-input"
+                        data-testid="onboard-password-input"
+                        type={showOnboardPassword ? "text" : "password"}
+                        required
+                        placeholder="••••••••"
+                        value={onboardPassword}
+                        onChange={(e) => setOnboardPassword(e.target.value)}
+                        className={cn(
+                          "w-full px-3 py-2 pr-10 rounded-lg border text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500",
+                          validationErrors.password ? "border-rose-300 bg-rose-50/30" : "border-slate-300"
+                        )}
+                        aria-invalid={Boolean(validationErrors.password)}
+                        aria-describedby={validationErrors.password ? "onboard-password-error" : undefined}
+                      />
+                      <button
+                        type="button"
+                        id="toggle-onboard-password-btn"
+                        data-testid="toggle-onboard-password-btn"
+                        onClick={() => setShowOnboardPassword(!showOnboardPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        aria-label={showOnboardPassword ? "Hide password" : "Show password"}
+                      >
+                        {showOnboardPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    {validationErrors.password && (
+                      <span id="onboard-password-error" className="text-[10px] text-rose-600 block">
+                        {validationErrors.password}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Confirm Password */}
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="onboard-confirm-password-input"
+                      className="font-semibold text-slate-700"
+                    >
+                      Confirm Password <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="onboard-confirm-password-input"
+                        data-testid="onboard-confirm-password-input"
+                        type={showOnboardConfirmPassword ? "text" : "password"}
+                        required
+                        placeholder="••••••••"
+                        value={onboardConfirmPassword}
+                        onChange={(e) => setOnboardConfirmPassword(e.target.value)}
+                        className={cn(
+                          "w-full px-3 py-2 pr-10 rounded-lg border text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500",
+                          validationErrors.confirmPassword ? "border-rose-300 bg-rose-50/30" : "border-slate-300"
+                        )}
+                        aria-invalid={Boolean(validationErrors.confirmPassword)}
+                        aria-describedby={validationErrors.confirmPassword ? "onboard-confirm-password-error" : undefined}
+                      />
+                      <button
+                        type="button"
+                        id="toggle-onboard-confirm-password-btn"
+                        data-testid="toggle-onboard-confirm-password-btn"
+                        onClick={() => setShowOnboardConfirmPassword(!showOnboardConfirmPassword)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors p-1"
+                        aria-label={showOnboardConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                      >
+                        {showOnboardConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                    {validationErrors.confirmPassword && (
+                      <span id="onboard-confirm-password-error" className="text-[10px] text-rose-600 block">
+                        {validationErrors.confirmPassword}
+                      </span>
                     )}
                   </div>
 
@@ -1818,97 +2024,170 @@ export default function AdminDoctorsPage() {
         </div>
       )}
 
-      {/* Schedule Configuration Modal Dialog */}
-      {scheduleModalOpen && selectedDoctorForSchedule && (
+      {/* Resend Invitation / Link Modal */}
+      {resendModalOpen && selectedDoctorForResend && (
         <div
-          id="manage-schedule-modal"
-          data-testid="manage-schedule-modal"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in"
+          id="resend-invite-modal"
+          data-testid="resend-invite-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in"
         >
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95">
-            {/* Modal Header */}
-            <div className="bg-slate-900 px-6 py-4 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-sky-500/20 text-sky-400 rounded-lg">
-                  <Calendar size={18} />
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-500 rounded-lg text-white">
+                  <KeyRound size={16} />
                 </div>
                 <div>
-                  <h3 className="font-bold text-base">
-                    Consultation Hours & Schedule
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    {selectedDoctorForSchedule.profile?.full_name} &bull; License {selectedDoctorForSchedule.license_number}
+                  <h3 className="text-sm font-bold">Physician Invitation & Credentials</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Regenerate secure access credentials for {selectedDoctorForResend.profile?.full_name}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResendModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Physician Name:</span>
+                  <span className="font-semibold text-slate-900">
+                    {selectedDoctorForResend.profile?.full_name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Email:</span>
+                  <span className="font-semibold text-slate-900">
+                    {selectedDoctorForResend.profile?.email}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">License Number:</span>
+                  <span className="font-mono text-slate-700">
+                    {selectedDoctorForResend.license_number}
+                  </span>
+                </div>
+              </div>
+
+              {resendLoading ? (
+                <div className="p-8 text-center space-y-2">
+                  <Loader2 size={24} className="animate-spin text-indigo-600 mx-auto" />
+                  <p className="text-xs text-slate-500">
+                    Regenerating secure invitation link via Supabase Auth...
+                  </p>
+                </div>
+              ) : resendError ? (
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-start gap-2">
+                  <AlertCircle size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-semibold block">Failed to regenerate invitation:</span>
+                    <span>{resendError}</span>
+                  </div>
+                </div>
+              ) : resendActionLink ? (
+                <div className="space-y-3">
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800">
+                    <p className="font-semibold">Invitation link successfully generated!</p>
+                    <p className="text-[11px] text-emerald-700 mt-0.5">
+                      Provide this secure link to the physician to allow them to configure their password and activate their clinical workspace.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Setup / Activation Link:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        id="resend-action-link-input"
+                        data-testid="resend-action-link-input"
+                        type="text"
+                        readOnly
+                        value={resendActionLink}
+                        className="flex-1 px-3 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-lg text-slate-700 focus:outline-none"
+                      />
+                      <Button
+                        id="copy-resend-link-btn"
+                        data-testid="copy-resend-link-btn"
+                        type="button"
+                        size="sm"
+                        onClick={() => {
+                          if (resendActionLink && typeof navigator !== "undefined") {
+                            navigator.clipboard.writeText(resendActionLink);
+                            setCopiedResendLink(true);
+                            setTimeout(() => setCopiedResendLink(false), 3000);
+                          }
+                        }}
+                        className="gap-1.5 text-xs bg-indigo-700 hover:bg-indigo-800 text-white shrink-0"
+                      >
+                        {copiedResendLink ? (
+                          <>
+                            <Check size={14} />
+                            Copied
+                          </>
+                        ) : (
+                          <>
+                            <Copy size={14} />
+                            Copy Link
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="pt-2 flex justify-end border-t border-slate-100">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setResendModalOpen(false)}
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Doctor Schedule Management Modal */}
+      {scheduleModalOpen && selectedDoctorForSchedule && (
+        <div
+          id="doctor-schedule-modal"
+          data-testid="doctor-schedule-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in"
+        >
+          <div className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-sky-600 rounded-lg text-white">
+                  <Calendar size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Consultation Schedule & Hours</h3>
+                  <p className="text-[11px] text-slate-400">
+                    {selectedDoctorForSchedule.profile?.full_name} · {selectedDoctorForSchedule.hospital?.name || "Clinic Facility"}
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setScheduleModalOpen(false)}
-                className="text-slate-400 hover:text-white transition-colors p-1 rounded-lg"
+                className="text-slate-400 hover:text-white"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-4 text-xs">
-              {/* Presets Row */}
-              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                <span className="text-[11px] font-semibold text-slate-600">
-                  Quick Presets:
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDoctorSchedules((prev) =>
-                        prev.map((d) => ({
-                          ...d,
-                          is_active: d.day_of_week >= 0 && d.day_of_week <= 4,
-                          start_time: "09:00",
-                          end_time: "17:00",
-                          slot_duration_minutes: 30,
-                        }))
-                      );
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-sky-300 hover:bg-sky-50 text-[11px] font-medium text-slate-700 transition-colors"
-                  >
-                    Mon &ndash; Fri (9am &ndash; 5pm)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDoctorSchedules((prev) =>
-                        prev.map((d) => ({
-                          ...d,
-                          is_active: true,
-                          start_time: "09:00",
-                          end_time: "17:00",
-                          slot_duration_minutes: 30,
-                        }))
-                      );
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-sky-300 hover:bg-sky-50 text-[11px] font-medium text-slate-700 transition-colors"
-                  >
-                    All 7 Days
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDoctorSchedules((prev) =>
-                        prev.map((d) => ({
-                          ...d,
-                          is_active: false,
-                        }))
-                      );
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-rose-300 hover:bg-rose-50 text-[11px] font-medium text-slate-700 transition-colors"
-                  >
-                    Disable All
-                  </button>
-                </div>
-              </div>
-
+            <div className="p-6 overflow-y-auto space-y-4">
               {scheduleModalError && (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
                   <AlertCircle size={15} className="text-rose-600 shrink-0" />
@@ -1924,145 +2203,309 @@ export default function AdminDoctorsPage() {
               )}
 
               {isLoadingSchedules ? (
-                <div className="py-12 text-center space-y-2">
-                  <Loader2 size={24} className="animate-spin text-sky-600 mx-auto" />
-                  <p className="text-slate-500 font-medium">Loading configured hours...</p>
+                <div className="p-8 text-center space-y-2">
+                  <RotateCcw size={20} className="animate-spin text-sky-600 mx-auto" />
+                  <p className="text-xs text-slate-500 font-medium">Loading consultation schedules...</p>
                 </div>
               ) : (
-                <div className="border border-slate-200 rounded-xl overflow-hidden divide-y divide-slate-100">
-                  <div className="bg-slate-50 px-4 py-2.5 grid grid-cols-12 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                    <span className="col-span-3">Day of Week</span>
-                    <span className="col-span-2">Active</span>
-                    <span className="col-span-3">Start Time</span>
-                    <span className="col-span-2">End Time</span>
-                    <span className="col-span-2">Slot</span>
-                  </div>
-
-                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
-                    (dayName, dayIndex) => {
-                      const item = doctorSchedules.find((d) => d.day_of_week === dayIndex) || {
-                        day_of_week: dayIndex,
-                        start_time: "09:00",
-                        end_time: "17:00",
-                        slot_duration_minutes: 30,
-                        is_active: false,
-                      };
-
-                      return (
-                        <div
-                          key={dayIndex}
-                          className={cn(
-                            "px-4 py-3 grid grid-cols-12 items-center gap-2 transition-colors",
-                            item.is_active ? "bg-white" : "bg-slate-50/50 opacity-60"
-                          )}
+                <>
+                  {doctorSchedules.length === 0 ? (
+                    <div className="p-6 text-center space-y-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900">
+                      <Clock size={24} className="text-amber-600 mx-auto" />
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold">No Consultation Schedules Configured</p>
+                        <p className="text-[11px] text-amber-700 max-w-sm mx-auto">
+                          This physician cannot currently receive patient bookings. You can initialize standard outpatient hours or configure custom schedule windows.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleInitializeDefaultSchedule}
+                        disabled={isSavingSchedules}
+                        className="bg-sky-700 hover:bg-sky-800 text-white text-xs gap-1.5"
+                      >
+                        <Calendar size={13} />
+                        Initialize Default (Mon–Fri 09:00 - 17:00)
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <span className="text-xs font-semibold text-slate-700">Weekly Schedule Windows</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleInitializeDefaultSchedule}
+                          disabled={isSavingSchedules}
+                          className="text-[11px] h-7 text-sky-700 hover:bg-sky-50 gap-1 font-semibold"
                         >
-                          <span className="col-span-3 font-semibold text-slate-800">
-                            {dayName}
-                          </span>
+                          <RotateCcw size={12} />
+                          Reset to Default Mon-Fri
+                        </Button>
+                      </div>
 
-                          <div className="col-span-2">
-                            <input
-                              type="checkbox"
-                              id={`schedule-active-${dayIndex}`}
-                              checked={item.is_active}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setDoctorSchedules((prev) =>
-                                  prev.map((d) =>
-                                    d.day_of_week === dayIndex ? { ...d, is_active: checked } : d
-                                  )
-                                );
-                              }}
-                              className="h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500 cursor-pointer"
-                            />
-                          </div>
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
+                          (dayName, dayIdx) => {
+                            const sched = doctorSchedules.find((s) => s.day_of_week === dayIdx);
+                            const isActive = Boolean(sched && sched.is_active);
 
-                          <div className="col-span-3">
-                            <input
-                              type="time"
-                              value={item.start_time}
-                              disabled={!item.is_active}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setDoctorSchedules((prev) =>
-                                  prev.map((d) =>
-                                    d.day_of_week === dayIndex ? { ...d, start_time: val } : d
-                                  )
-                                );
-                              }}
-                              className="w-full px-2 py-1 rounded border border-slate-200 bg-white text-xs disabled:bg-slate-100"
-                            />
-                          </div>
+                            return (
+                              <div
+                                key={dayName}
+                                className={`p-2.5 rounded-xl border text-xs flex items-center justify-between gap-3 ${
+                                  isActive
+                                    ? "bg-white border-slate-200"
+                                    : "bg-slate-50 border-slate-100 opacity-60"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 w-28 shrink-0">
+                                  <input
+                                    type="checkbox"
+                                    checked={isActive}
+                                    id={`check-day-${dayIdx}`}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      if (checked) {
+                                        if (sched) {
+                                          setDoctorSchedules((prev) =>
+                                            prev.map((s) =>
+                                              s.day_of_week === dayIdx ? { ...s, is_active: true } : s
+                                            )
+                                          );
+                                        } else {
+                                          setDoctorSchedules((prev) => [
+                                            ...prev,
+                                            {
+                                              day_of_week: dayIdx,
+                                              start_time: "09:00:00",
+                                              end_time: "17:00:00",
+                                              slot_duration_minutes: 30,
+                                              is_active: true,
+                                            },
+                                          ]);
+                                        }
+                                      } else {
+                                        setDoctorSchedules((prev) =>
+                                          prev.filter((s) => s.day_of_week !== dayIdx)
+                                        );
+                                      }
+                                    }}
+                                    className="rounded border-slate-300 text-sky-600 focus:ring-sky-500 h-3.5 w-3.5"
+                                  />
+                                  <label
+                                    htmlFor={`check-day-${dayIdx}`}
+                                    className="font-medium text-slate-800 cursor-pointer"
+                                  >
+                                    {dayName}
+                                  </label>
+                                </div>
 
-                          <div className="col-span-2">
-                            <input
-                              type="time"
-                              value={item.end_time}
-                              disabled={!item.is_active}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setDoctorSchedules((prev) =>
-                                  prev.map((d) =>
-                                    d.day_of_week === dayIndex ? { ...d, end_time: val } : d
-                                  )
-                                );
-                              }}
-                              className="w-full px-2 py-1 rounded border border-slate-200 bg-white text-xs disabled:bg-slate-100"
-                            />
-                          </div>
+                                {isActive && sched ? (
+                                  <div className="flex items-center gap-2 grow justify-end">
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[10px] text-slate-400">Start:</span>
+                                      <input
+                                        type="time"
+                                        value={sched.start_time.slice(0, 5)}
+                                        onChange={(e) => {
+                                          const val = e.target.value ? `${e.target.value}:00` : sched.start_time;
+                                          setDoctorSchedules((prev) =>
+                                            prev.map((s) =>
+                                              s.day_of_week === dayIdx ? { ...s, start_time: val } : s
+                                            )
+                                          );
+                                        }}
+                                        className="px-1.5 py-0.5 border border-slate-200 rounded text-xs bg-white text-slate-800 font-mono"
+                                      />
+                                    </div>
 
-                          <div className="col-span-2">
-                            <select
-                              value={item.slot_duration_minutes}
-                              disabled={!item.is_active}
-                              onChange={(e) => {
-                                const val = Number(e.target.value);
-                                setDoctorSchedules((prev) =>
-                                  prev.map((d) =>
-                                    d.day_of_week === dayIndex
-                                      ? { ...d, slot_duration_minutes: val }
-                                      : d
-                                  )
-                                );
-                              }}
-                              className="w-full px-1.5 py-1 rounded border border-slate-200 bg-white text-xs disabled:bg-slate-100"
-                            >
-                              <option value={15}>15m</option>
-                              <option value={20}>20m</option>
-                              <option value={30}>30m</option>
-                              <option value={45}>45m</option>
-                              <option value={60}>60m</option>
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    }
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[10px] text-slate-400">End:</span>
+                                      <input
+                                        type="time"
+                                        value={sched.end_time.slice(0, 5)}
+                                        onChange={(e) => {
+                                          const val = e.target.value ? `${e.target.value}:00` : sched.end_time;
+                                          setDoctorSchedules((prev) =>
+                                            prev.map((s) =>
+                                              s.day_of_week === dayIdx ? { ...s, end_time: val } : s
+                                            )
+                                          );
+                                        }}
+                                        className="px-1.5 py-0.5 border border-slate-200 rounded text-xs bg-white text-slate-800 font-mono"
+                                      />
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-[10px] text-slate-400">Slot:</span>
+                                      <select
+                                        value={sched.slot_duration_minutes}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value, 10);
+                                          setDoctorSchedules((prev) =>
+                                            prev.map((s) =>
+                                              s.day_of_week === dayIdx
+                                                ? { ...s, slot_duration_minutes: val }
+                                                : s
+                                            )
+                                          );
+                                        }}
+                                        className="px-1.5 py-0.5 border border-slate-200 rounded text-xs bg-white text-slate-800"
+                                      >
+                                        <option value={15}>15m</option>
+                                        <option value={20}>20m</option>
+                                        <option value={30}>30m</option>
+                                        <option value={45}>45m</option>
+                                        <option value={60}>60m</option>
+                                      </select>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <span className="text-[11px] text-slate-400 italic">Not scheduled</span>
+                                )}
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    </div>
                   )}
+                </>
+              )}
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setScheduleModalOpen(false)}
+                >
+                  Close
+                </Button>
+                {doctorSchedules.length > 0 && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSaveSchedules}
+                    disabled={isSavingSchedules || isLoadingSchedules}
+                    className="bg-sky-700 hover:bg-sky-800 text-white font-semibold text-xs gap-1.5"
+                  >
+                    {isSavingSchedules ? "Saving..." : "Save Schedules"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Repair Unscheduled Doctors Modal */}
+      {repairModalOpen && (
+        <div
+          id="repair-schedules-modal"
+          data-testid="repair-schedules-modal"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in"
+        >
+          <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 bg-indigo-900 text-white flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-indigo-700 rounded-lg text-white">
+                  <Calendar size={16} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Repair Physician Schedules</h3>
+                  <p className="text-[11px] text-indigo-200">
+                    Inspect and safely configure default outpatient consultation hours
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRepairModalOpen(false)}
+                className="text-indigo-300 hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4">
+              {repairError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+                  <AlertCircle size={15} className="text-rose-600 shrink-0" />
+                  <span>{repairError}</span>
                 </div>
               )}
 
-              {/* Modal Footer */}
-              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              {repairSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs flex items-center gap-2">
+                  <CheckCircle2 size={15} className="text-emerald-600 shrink-0" />
+                  <span>{repairSuccess}</span>
+                </div>
+              )}
+
+              {repairLoading ? (
+                <div className="p-8 text-center space-y-2">
+                  <RotateCcw size={20} className="animate-spin text-indigo-600 mx-auto" />
+                  <p className="text-xs text-slate-500 font-medium">Scanning registered physicians...</p>
+                </div>
+              ) : repairDryRunData ? (
+                <div className="space-y-3">
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Unscheduled Physicians Found:</span>
+                      <span className="font-bold text-slate-900">{repairDryRunData.unscheduled_count}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 pt-1">
+                      Safe & Idempotent: Only doctors lacking active schedules will be configured with default hours (Monday–Friday 09:00 - 17:00, 30m slots). Existing schedules, appointments, and patients are never altered.
+                    </p>
+                  </div>
+
+                  {repairDryRunData.unscheduled_count > 0 ? (
+                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">
+                        Physicians to be configured:
+                      </p>
+                      {repairDryRunData.doctors.map((d) => (
+                        <div
+                          key={d.doctor_id}
+                          className="p-2 rounded-lg bg-white border border-slate-200 text-xs flex items-center justify-between"
+                        >
+                          <span className="font-semibold text-slate-800">Dr. {d.doctor_name}</span>
+                          <span className="text-[10px] text-slate-400 font-mono">{d.doctor_id.slice(0, 8)}...</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl font-medium">
+                      All registered active physicians already have configured consultation schedules!
+                    </div>
+                  )}
+                </div>
+              ) : null}
+
+              <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100">
                 <Button
                   type="button"
+                  size="sm"
                   variant="outline"
-                  size="sm"
-                  onClick={() => setScheduleModalOpen(false)}
-                  disabled={isScheduleSubmitting}
+                  onClick={() => setRepairModalOpen(false)}
                 >
-                  Cancel
+                  Close
                 </Button>
-                <Button
-                  id="save-schedules-btn"
-                  data-testid="save-schedules-btn"
-                  type="button"
-                  size="sm"
-                  onClick={handleSaveSchedules}
-                  isLoading={isScheduleSubmitting}
-                  className="bg-sky-700 hover:bg-sky-800 text-white font-semibold"
-                >
-                  Save Consultation Hours
-                </Button>
+                {repairDryRunData && repairDryRunData.unscheduled_count > 0 && !repairSuccess && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleExecuteRepair}
+                    disabled={repairLoading}
+                    className="bg-indigo-700 hover:bg-indigo-800 text-white font-semibold text-xs gap-1.5"
+                  >
+                    {repairLoading ? "Repairing..." : `Execute Repair (${repairDryRunData.unscheduled_count})`}
+                  </Button>
+                )}
               </div>
             </div>
           </div>

@@ -28,6 +28,7 @@ from app.schemas.doctor_recommendation import (
     DoctorRecommendationResponse,
 )
 from app.services.appointment_service import appointment_service
+from app.services.system_setting_service import system_setting_service
 
 
 class DoctorRecommendationService:
@@ -185,6 +186,13 @@ class DoctorRecommendationService:
                 continue
             filtered_candidates.append(doc)
         candidate_doctors = filtered_candidates
+
+        # Filter by clinic station intake status:
+        # A physician whose clinic station is paused is not currently accepting new triage intakes.
+        candidate_doctors = [
+            d for d in candidate_doctors
+            if system_setting_service.get_doctor_intake_status(db, d.id)
+        ]
 
         # Filter by consultation mode if requested
         if request.consultation_mode:

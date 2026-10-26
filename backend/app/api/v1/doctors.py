@@ -9,9 +9,15 @@ from app.core.dependencies import (
     require_doctor,
     verify_hospital_access,
 )
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.db.session import get_db
 from app.schemas.appointment import DoctorAvailabilityResponse
-from app.schemas.doctor import DoctorCreate, DoctorResponse
+from app.schemas.doctor import (
+    DoctorCreate,
+    DoctorResponse,
+    DoctorIntakeStatusResponse,
+    DoctorIntakeStatusUpdate,
+)
 from app.schemas.doctor_recommendation import (
     DoctorRecommendationRequest,
     DoctorRecommendationResponse,
@@ -19,6 +25,8 @@ from app.schemas.doctor_recommendation import (
 from app.services.appointment_service import appointment_service
 from app.services.doctor_recommendation_service import doctor_recommendation_service
 from app.services.doctor_service import doctor_service
+from app.services.supabase_admin_service import supabase_admin_service
+from app.services.system_setting_service import system_setting_service
 
 router = APIRouter(tags=["Doctors"])
 
@@ -37,7 +45,7 @@ def list_doctors(
     limit: int = 100,
     db: Session = Depends(get_db),
 ) -> List[DoctorResponse]:
-    return doctor_service.list_doctors(
+    docs = doctor_service.list_doctors(
         db,
         hospital_id=hospital_id,
         specialty_id=specialty_id,
@@ -46,6 +54,12 @@ def list_doctors(
         skip=skip,
         limit=limit,
     )
+    results: List[DoctorResponse] = []
+    for d in docs:
+        resp = DoctorResponse.model_validate(d)
+        resp.is_accepting_patients = system_setting_service.get_doctor_intake_status(db, d.id)
+        results.append(resp)
+    return results
 
 
 @router.get(
@@ -71,7 +85,7 @@ def list_doctors_admin(
     elif status == "inactive":
         is_active = False
 
-    return doctor_service.list_doctors(
+    docs = doctor_service.list_doctors(
         db,
         hospital_id=effective_hospital,
         specialty_id=specialty_id,
@@ -80,6 +94,31 @@ def list_doctors_admin(
         skip=skip,
         limit=limit,
     )
+
+    users_map = (
+        supabase_admin_service.get_all_users_map()
+        if supabase_admin_service.is_configured
+        else {}
+    )
+
+    result: List[DoctorResponse] = []
+    for d in docs:
+        resp = DoctorResponse.model_validate(d)
+        resp.is_accepting_patients = system_setting_service.get_doctor_intake_status(db, d.id)
+        if not d.is_active:
+            resp.invitation_status = "inactive"
+        elif d.profile and d.profile.email:
+            email_clean = d.profile.email.strip().lower()
+            if email_clean in users_map:
+                u = users_map[email_clean]
+                if u.get("last_sign_in_at") or u.get("confirmed_at") or u.get("email_confirmed_at"):
+                    resp.invitation_status = "active"
+                else:
+                    resp.invitation_status = "pending"
+            else:
+                resp.invitation_status = "active"
+        result.append(resp)
+    return result
 
 
 @router.post(
@@ -140,7 +179,112 @@ def get_current_doctor(
             message="Doctor account has been deactivated by clinic administration.",
             code="DOCTOR_DEACTIVATED",
         )
-    return doctor_service.get_doctor(db, doc.id)
+    resp = DoctorResponse.model_validate(doctor_service.get_doctor(db, doc.id))
+    resp.is_accepting_patients = system_setting_service.get_doctor_intake_status(db, doc.id)
+    return resp
+
+
+@router.patch(
+    "/me/intake-status",
+    response_model=DoctorIntakeStatusResponse,
+    summary="Update Current Doctor Clinic Station Intake Status",
+    description="Updates the authenticated doctor's clinic station patient intake availability.",
+)
+def update_current_doctor_intake_status(
+    payload: DoctorIntakeStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_doctor),
+) -> DoctorIntakeStatusResponse:
+    from sqlalchemy import or_
+    from app.models.doctor import Doctor
+    from app.models.profile import Profile
+
+    doc = (
+        db.query(Doctor)
+        .join(Profile, Doctor.profile_id == Profile.id)
+        .filter(or_(Profile.auth_user_id == current_user.id, Profile.id == current_user.id))
+        .first()
+    )
+    if not doc:
+        raise ForbiddenError(
+            message="No registered doctor record found for your user account",
+            code="DOCTOR_RECORD_NOT_FOUND",
+        )
+    return update_doctor_intake_status(
+        doctor_id=doc.id,
+        payload=payload,
+        db=db,
+        current_user=current_user,
+    )
+
+
+@router.patch(
+    "/{doctor_id}/intake-status",
+    response_model=DoctorIntakeStatusResponse,
+    summary="Update Doctor Clinic Station Intake Status",
+    description="Updates clinic station patient intake availability (accepting patients vs station paused).",
+)
+def update_doctor_intake_status(
+    doctor_id: str,
+    payload: DoctorIntakeStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DoctorIntakeStatusResponse:
+    from app.models.doctor import Doctor
+    from app.models.profile import Profile
+
+    doctor = db.query(Doctor).filter(Doctor.id == doctor_id).first()
+    if not doctor:
+        raise NotFoundError(
+            message=f"Doctor with ID '{doctor_id}' not found.",
+            code="DOCTOR_NOT_FOUND",
+        )
+
+    # Authorization verification:
+    # 1. Admin can update intake status for doctors in their hospital
+    if current_user.is_admin:
+        verify_hospital_access(doctor.hospital_id, current_user)
+    # 2. Doctor can only update their own intake status
+    elif current_user.is_doctor:
+        profile = db.query(Profile).filter(Profile.id == doctor.profile_id).first()
+        is_owner = (
+            profile
+            and (profile.auth_user_id == current_user.id or profile.id == current_user.id)
+        )
+        if not is_owner:
+            raise ForbiddenError(
+                message="Access forbidden: You are not authorized to update another physician's intake status.",
+                code="FORBIDDEN_DOCTOR_STATUS_UPDATE",
+            )
+    else:
+        raise ForbiddenError(
+            message="Insufficient permissions to update doctor intake status.",
+            code="INSUFFICIENT_PERMISSIONS",
+        )
+
+    # Inactive/deactivated doctors cannot toggle station intake
+    if not doctor.is_active:
+        raise ForbiddenError(
+            message="Cannot update intake availability: this physician account has been deactivated by administration.",
+            code="DOCTOR_DEACTIVATED",
+        )
+
+    # Authoritatively persist in system_settings
+    is_accepting = system_setting_service.set_doctor_intake_status(
+        db,
+        doctor_id=doctor.id,
+        is_accepting=payload.is_accepting_patients,
+        updated_by=current_user.id,
+    )
+
+    status_label = "Accepting Patients" if is_accepting else "Station Paused"
+    msg = f"Clinic station intake status updated to '{status_label}'."
+    return DoctorIntakeStatusResponse(
+        doctor_id=doctor.id,
+        is_accepting_patients=is_accepting,
+        status=status_label,
+        message=msg,
+    )
 
 
 @router.get(
@@ -153,7 +297,10 @@ def get_doctor(
     doctor_id: str,
     db: Session = Depends(get_db),
 ) -> DoctorResponse:
-    return doctor_service.get_doctor(db, doctor_id)
+    doc = doctor_service.get_doctor(db, doctor_id)
+    resp = DoctorResponse.model_validate(doc)
+    resp.is_accepting_patients = system_setting_service.get_doctor_intake_status(db, doc.id)
+    return resp
 
 
 @router.get(

@@ -95,6 +95,13 @@ function getDoctorDisplaySpecialty(
   );
 }
 
+function getLocalDateString(d: Date = new Date()): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function DoctorMatchingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -128,8 +135,7 @@ function DoctorMatchingContent() {
   // Real Slot Availability & Booking State
   const [selectedDoctorForBooking, setSelectedDoctorForBooking] = useState<DoctorRecommendationItem | null>(null);
   const [bookingDate, setBookingDate] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
+    return getLocalDateString();
   });
   const [availableSlots, setAvailableSlots] = useState<AvailableSlot[]>([]);
   const [availabilityInfo, setAvailabilityInfo] = useState<DoctorAvailabilityResponse | null>(null);
@@ -268,9 +274,9 @@ function DoctorMatchingContent() {
         if (isMounted) {
           setAvailabilityInfo(avail);
           let slots = avail.slots || [];
-          // Defensive client-side past slot exclusion if booking date is today
-          const todayStr = new Date().toISOString().split("T")[0];
-          if (bookingDate === todayStr) {
+          // Defensive client-side past slot exclusion if booking date is today in local calendar
+          const todayLocal = getLocalDateString();
+          if (bookingDate === todayLocal) {
             const now = new Date();
             const currentHour = now.getHours();
             const currentMin = now.getMinutes();
@@ -310,6 +316,10 @@ function DoctorMatchingContent() {
     setBookingError(null);
     setBookingSuccess(false);
     setAvailabilityInfo(null);
+    const today = getLocalDateString();
+    if (bookingDate < today) {
+      setBookingDate(today);
+    }
   };
 
   const handleCloseSlotSelection = () => {
@@ -321,7 +331,7 @@ function DoctorMatchingContent() {
   };
 
   const handleConfirmBooking = async () => {
-    if (!selectedDoctorForBooking || !selectedSlot || isBooking) return;
+    if (!selectedDoctorForBooking || !selectedSlot || !selectedSlot.is_available || isBooking) return;
     setIsBooking(true);
     setBookingError(null);
 
@@ -1100,7 +1110,7 @@ function DoctorMatchingContent() {
                   <input
                     type="date"
                     value={bookingDate}
-                    min={new Date().toISOString().split("T")[0]}
+                    min={getLocalDateString()}
                     onChange={(e) => {
                       setBookingDate(e.target.value);
                       setSelectedSlot(null);
@@ -1137,7 +1147,7 @@ function DoctorMatchingContent() {
                     </div>
                   </div>
                 ) : availabilityInfo?.schedule_configured === false ? (
-                  <div className="p-6 text-center space-y-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="p-6 text-center space-y-2 bg-slate-50 rounded-xl border border-slate-100">
                     <Calendar size={22} className="text-slate-400 mx-auto" />
                     <p className="text-xs font-semibold text-slate-700">
                       No consultation schedule configured
@@ -1147,17 +1157,31 @@ function DoctorMatchingContent() {
                     </p>
                   </div>
                 ) : availabilityInfo?.has_schedule === false ? (
-                  <div className="p-6 text-center space-y-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                  <div className="p-6 text-center space-y-2 bg-slate-50 rounded-xl border border-slate-100">
                     <Calendar size={22} className="text-slate-400 mx-auto" />
                     <p className="text-xs font-semibold text-slate-700">
-                      No consultations scheduled for this date
+                      Outside consultation hours
                     </p>
                     <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
-                      This physician is not scheduled for outpatient consultations on {formatAppointmentDate(bookingDate)}. Please select another day.
+                      Dr. {selectedDoctorForBooking?.doctor.profile.full_name || "this physician"} does not consult on {formatAppointmentDate(bookingDate)}. Please select another date.
                     </p>
+                    {availabilityInfo?.next_available_date && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBookingDate(availabilityInfo.next_available_date!);
+                          setSelectedSlot(null);
+                          setBookingError(null);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 text-xs font-semibold transition-colors mt-1"
+                      >
+                        <Calendar size={13} />
+                        View Next Available: {formatAppointmentDate(availabilityInfo.next_available_date)}
+                      </button>
+                    )}
                   </div>
-                ) : availableSlots.length === 0 || !availableSlots.some((s) => s.is_available) ? (
-                  <div className="p-6 text-center space-y-1.5 bg-slate-50 rounded-xl border border-slate-100">
+                ) : availableSlots.length === 0 || !availableSlots.some((s) => s.is_available) || availabilityInfo?.is_fully_booked ? (
+                  <div className="p-6 text-center space-y-2 bg-slate-50 rounded-xl border border-slate-100">
                     <Calendar size={22} className="text-slate-400 mx-auto" />
                     <p className="text-xs font-semibold text-slate-700">
                       All consultation windows booked
@@ -1165,6 +1189,20 @@ function DoctorMatchingContent() {
                     <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
                       All consultation windows on {formatAppointmentDate(bookingDate)} are fully booked or have already passed. Please choose another date.
                     </p>
+                    {availabilityInfo?.next_available_date && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBookingDate(availabilityInfo.next_available_date!);
+                          setSelectedSlot(null);
+                          setBookingError(null);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 text-xs font-semibold transition-colors mt-1"
+                      >
+                        <Calendar size={13} />
+                        View Next Available: {formatAppointmentDate(availabilityInfo.next_available_date)}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
@@ -1253,7 +1291,7 @@ function DoctorMatchingContent() {
               <Button
                 size="sm"
                 onClick={handleConfirmBooking}
-                disabled={!selectedSlot || isBooking || bookingSuccess}
+                disabled={!selectedSlot || !selectedSlot.is_available || isBooking || bookingSuccess}
                 isLoading={isBooking}
                 className="gap-2 font-semibold shadow-sm"
               >

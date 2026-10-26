@@ -48,6 +48,7 @@ class AdminCreatePatientRequest(BaseModel):
 class AdminOnboardDoctorRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255, description="Full legal name of the physician")
     email: EmailStr = Field(..., description="Physician professional email address")
+    password: str = Field(..., min_length=8, description="Initial physician password for Supabase Auth account creation")
     license_number: str = Field(..., min_length=2, max_length=100, description="Medical practitioner license number")
     hospital_id: str = Field(..., description="Affiliated hospital UUID")
     department_id: Optional[str] = Field(None, description="Optional department UUID")
@@ -58,6 +59,7 @@ class AdminOnboardDoctorRequest(BaseModel):
     languages: str = Field(default="en", max_length=255, description="Languages spoken")
     phone: Optional[str] = Field(None, max_length=50, description="Physician phone number")
     auth_user_id: Optional[str] = Field(None, description="Optional pre-existing Supabase auth user UUID")
+
 
 
 class AdminAccountCreatedResponse(BaseModel):
@@ -87,3 +89,14 @@ class AdminDoctorLifecycleResponse(BaseModel):
     is_active: bool
     status: str  # "active", "deactivated", "deleted"
     message: str
+
+
+class AdminResendInvitationResponse(BaseModel):
+    doctor_id: str
+    profile_id: str
+    full_name: str
+    email: str
+    action_link: Optional[str] = Field(default=None, description="Regenerated password-setup or invitation link")
+    message: str
+    auth_provisioned: bool = Field(default=True, description="True if link was provisioned via Supabase Auth")
+

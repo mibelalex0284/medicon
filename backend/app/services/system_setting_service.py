@@ -76,5 +76,34 @@ class SystemSettingService:
         )
         return enabled
 
+    def get_doctor_intake_status(self, db: Session, doctor_id: str) -> bool:
+        """Retrieves clinic station intake status for a physician.
+
+        Returns True (accepting patients) by default if no setting is persisted.
+        """
+        key = f"doctor_intake:{doctor_id}"
+        val = self.get_setting(db, key, default="true")
+        if val is None:
+            return True
+        return val.strip().lower() in ("true", "1", "yes", "active", "accepting")
+
+    def set_doctor_intake_status(
+        self,
+        db: Session,
+        doctor_id: str,
+        is_accepting: bool,
+        updated_by: Optional[str] = None,
+    ) -> bool:
+        """Persists clinic station intake status for a physician."""
+        key = f"doctor_intake:{doctor_id}"
+        self.set_setting(
+            db=db,
+            key=key,
+            value="true" if is_accepting else "false",
+            description=f"Clinic station intake availability for physician {doctor_id}",
+            updated_by=updated_by,
+        )
+        return is_accepting
+
 
 system_setting_service = SystemSettingService()

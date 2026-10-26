@@ -1,5 +1,5 @@
-from typing import List, Optional
-from pydantic import Field
+from typing import Any, List, Optional
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,11 +18,28 @@ class Settings(BaseSettings):
     PORT: int = 8000
     HOST: str = "0.0.0.0"
 
-    # CORS
+    # CORS & Web Client
+    FRONTEND_URL: str = "http://localhost:3000"
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+
+    @field_validator("ALLOWED_ORIGINS", mode="before")
+    @classmethod
+    def assemble_cors_origins(cls, v: Any) -> List[str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith("[") and v.endswith("]"):
+                import json
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [i.strip() for i in v.split(",") if i.strip()]
+        elif isinstance(v, (list, tuple)):
+            return list(v)
+        return []
 
     # Supabase Configuration
     SUPABASE_URL: str = "https://rkyrzctczohppspnzfxp.supabase.co"
@@ -69,7 +86,7 @@ class Settings(BaseSettings):
     # Gemini & Stage 4B Triage Configuration
     GEMINI_API_KEY: Optional[str] = None
     GEMINI_MODEL: str = "gemini-3.6-flash"
-    DDXPLUS_DATA_PATH: str = "D:\\22687585.zip"
+    DDXPLUS_DATA_PATH: Optional[str] = None
     TRIAGE_MAX_TURNS: int = 7
     TRIAGE_MIN_COMPLETENESS: float = 0.70
 

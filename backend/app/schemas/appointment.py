@@ -18,6 +18,7 @@ class DoctorAvailabilityResponse(BaseModel):
     has_schedule: bool = Field(default=True, description="Whether doctor has working hours configured on this weekday")
     schedule_configured: bool = Field(default=True, description="Whether doctor has any working schedule configured in the system")
     is_fully_booked: bool = Field(default=False, description="Whether all slots for this day are booked")
+    next_available_date: Optional[date] = Field(default=None, description="Next calendar date with bookable slots if current date is unavailable")
     slots: List[AvailableSlot]
 
 

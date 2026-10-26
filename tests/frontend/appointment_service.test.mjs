@@ -172,6 +172,113 @@ describe("Doctor Availability Service (Frontend)", () => {
     assert.equal(putData.length, 2);
     assert.equal(capturedBody.schedules.length, 2);
   });
+
+  test("Doctor availability response includes next_available_date when doctor does not consult on selected date", async () => {
+    globalThis.fetch = async (url) => {
+      assert.match(url, /\/api\/v1\/doctors\/doc_javad\/availability\?appointment_date=2026-10-25/);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          doctor_id: "doc_javad",
+          hospital_id: "hosp_1",
+          appointment_date: "2026-10-25",
+          slot_duration_minutes: 30,
+          total_slots: 0,
+          available_count: 0,
+          has_schedule: false,
+          schedule_configured: true,
+          is_fully_booked: false,
+          next_available_date: "2026-10-26",
+          slots: [],
+        }),
+      };
+    };
+
+    const res = await globalThis.fetch("http://localhost:8000/api/v1/doctors/doc_javad/availability?appointment_date=2026-10-25");
+    const data = await res.json();
+    assert.equal(data.has_schedule, false);
+    assert.equal(data.schedule_configured, true);
+    assert.equal(data.next_available_date, "2026-10-26");
+  });
+
+  test("Admin doctor schedule initialization contract", async () => {
+    let capturedUrl = null;
+    let capturedOptions = null;
+    globalThis.fetch = async (url, options) => {
+      capturedUrl = url;
+      capturedOptions = options;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          { id: "s1", day_of_week: 0, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true },
+          { id: "s2", day_of_week: 1, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true },
+          { id: "s3", day_of_week: 2, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true },
+          { id: "s4", day_of_week: 3, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true },
+          { id: "s5", day_of_week: 4, start_time: "09:00:00", end_time: "17:00:00", slot_duration_minutes: 30, is_active: true },
+        ],
+      };
+    };
+
+    const res = await globalThis.fetch("http://localhost:8000/api/v1/admin/doctors/doc_chen/schedules/initialize-default?overwrite=false", {
+      method: "POST",
+    });
+    const data = await res.json();
+    assert.equal(res.status, 200);
+    assert.equal(capturedUrl, "http://localhost:8000/api/v1/admin/doctors/doc_chen/schedules/initialize-default?overwrite=false");
+    assert.equal(capturedOptions.method, "POST");
+    assert.equal(data.length, 5);
+  });
+
+  test("Admin repair doctor schedules contract supports dry_run and hospital filter", async () => {
+    let capturedUrl = null;
+    globalThis.fetch = async (url, options) => {
+      capturedUrl = url;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          scanned_doctors: 5,
+          repaired_doctors: 2,
+          dry_run: true,
+          details: [
+            { doctor_id: "doc_chen", name: "Dr. Marcus Chen", schedules_created: 5 },
+            { doctor_id: "doc_menon", name: "Dr. Anita Menon", schedules_created: 5 },
+          ],
+        }),
+      };
+    };
+
+    const res = await globalThis.fetch("http://localhost:8000/api/v1/admin/doctors/repair-schedules?hospital_id=hosp_1&dry_run=true", {
+      method: "POST",
+    });
+    const data = await res.json();
+    assert.equal(data.dry_run, true);
+    assert.equal(data.repaired_doctors, 2);
+    assert.equal(capturedUrl, "http://localhost:8000/api/v1/admin/doctors/repair-schedules?hospital_id=hosp_1&dry_run=true");
+  });
+
+  test("Booking modal confirm button validation guards", () => {
+    const isConfirmDisabled = (selectedSlot, isBooking, bookingSuccess) => {
+      return !selectedSlot || !selectedSlot.is_available || isBooking || bookingSuccess;
+    };
+
+    // No slot selected
+    assert.equal(isConfirmDisabled(null, false, false), true);
+
+    // Unavailable slot selected
+    assert.equal(isConfirmDisabled({ start_time: "09:00", is_available: false }, false, false), true);
+
+    // Available slot while booking
+    assert.equal(isConfirmDisabled({ start_time: "09:00", is_available: true }, true, false), true);
+
+    // Available slot after success
+    assert.equal(isConfirmDisabled({ start_time: "09:00", is_available: true }, false, true), true);
+
+    // Valid available slot ready to book
+    assert.equal(isConfirmDisabled({ start_time: "09:00", is_available: true }, false, false), false);
+  });
 });
 
 describe("Appointment Booking Operations (Frontend Service Integration)", () => {

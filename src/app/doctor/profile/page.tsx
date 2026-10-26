@@ -27,15 +27,18 @@ export default function DoctorProfilePage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isAvailable, setIsAvailable] = useState<boolean>(true);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState<boolean>(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const [saved, setSaved] = useState<boolean>(false);
 
   const loadDoctorProfile = async () => {
     setIsLoading(true);
     setErrorMessage(null);
+    setStatusError(null);
     try {
       const data = await doctorService.getCurrentDoctor();
       setDoctor(data);
-      setIsAvailable(data.is_active !== false);
+      setIsAvailable(data.is_accepting_patients !== false);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setErrorMessage(err.message);
@@ -51,10 +54,33 @@ export default function DoctorProfilePage() {
     loadDoctorProfile();
   }, []);
 
-  const toggleAvailability = () => {
-    setIsAvailable(!isAvailable);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const toggleAvailability = async () => {
+    if (!doctor || isUpdatingStatus) return;
+    const previousStatus = isAvailable;
+    const targetStatus = !previousStatus;
+
+    setIsUpdatingStatus(true);
+    setStatusError(null);
+    setSaved(false);
+
+    try {
+      const result = await doctorService.updateIntakeStatus(doctor.id, targetStatus);
+      setIsAvailable(result.is_accepting_patients);
+      setDoctor((prev) =>
+        prev ? { ...prev, is_accepting_patients: result.is_accepting_patients } : null
+      );
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err: unknown) {
+      setIsAvailable(previousStatus);
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Failed to update clinic station intake status. Please try again.";
+      setStatusError(msg);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
   };
 
   if (isLoading) {
@@ -176,11 +202,24 @@ export default function DoctorProfilePage() {
               size="sm"
               variant={isAvailable ? "default" : "secondary"}
               onClick={toggleAvailability}
+              disabled={isUpdatingStatus || doctor?.is_active === false}
               className={isAvailable ? "bg-teal-700 hover:bg-teal-800" : ""}
             >
-              {isAvailable ? "Active" : "Paused"}
+              {isUpdatingStatus ? "Updating..." : isAvailable ? "Active" : "Paused"}
             </Button>
           </div>
+          {statusError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center gap-2">
+              <AlertCircle size={14} className="text-rose-600 shrink-0" />
+              <span>{statusError}</span>
+            </div>
+          )}
+          {doctor?.is_active === false && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs flex items-center gap-2">
+              <AlertCircle size={14} className="text-amber-600 shrink-0" />
+              <span>Physician account deactivated by administration. Clinic station cannot accept patient intake.</span>
+            </div>
+          )}
           {saved && (
             <p className="text-emerald-600 text-xs font-semibold flex items-center gap-1">
               <Check size={14} /> Station routing configuration saved.
