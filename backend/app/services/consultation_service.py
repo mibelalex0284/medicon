@@ -1,5 +1,5 @@
 import datetime
-from typing import Optional
+from typing import Any, Optional
 from sqlalchemy.orm import Session
 from app.core.exceptions import (
     ConflictError,
@@ -44,6 +44,16 @@ class ConsultationService:
                 message="Access forbidden: you cannot start consultations for another doctor's patient",
                 code="NOT_ASSIGNED_DOCTOR",
             )
+
+        # Idempotent resume check: if already IN_CONSULTATION and active for this doctor, return existing
+        if entry.status == QueueStatus.IN_CONSULTATION:
+            active_existing = consultation_repo.get_by_queue_entry_id(db, queue_entry_id)
+            if (
+                active_existing
+                and active_existing.doctor_id == doctor_id
+                and active_existing.status == ConsultationStatus.IN_PROGRESS
+            ):
+                return active_existing
 
         # State transition check: entry must be CALLED or WAITING
         if entry.status not in [QueueStatus.CALLED, QueueStatus.WAITING]:
@@ -90,10 +100,54 @@ class ConsultationService:
         return consultation
 
     @staticmethod
-    def complete_consultation(
-        db: Session, queue_entry_id: str, doctor_id: str
+    def save_consultation_notes(
+        db: Session,
+        consultation_id: str,
+        doctor_id: str,
+        notes_in: Any,
     ) -> Consultation:
-        """Transitions Consultation and QueueEntry to COMPLETED, calculates duration, and completes Appointment."""
+        """Persists clinical notes, diagnosis, and orders for an active consultation."""
+        consultation = consultation_repo.get(db, consultation_id)
+        if not consultation:
+            raise NotFoundError(
+                message=f"Consultation with id '{consultation_id}' not found",
+                code="CONSULTATION_NOT_FOUND",
+            )
+
+        if consultation.doctor_id != doctor_id:
+            raise ForbiddenError(
+                message="Access forbidden: you cannot update another doctor's consultation",
+                code="NOT_ASSIGNED_DOCTOR",
+            )
+
+        if consultation.status == ConsultationStatus.COMPLETED:
+            raise InvalidStateTransitionError(
+                message="Cannot update notes for an already completed consultation",
+                code="ALREADY_COMPLETED",
+            )
+
+        if hasattr(notes_in, "clinical_notes") and notes_in.clinical_notes is not None:
+            consultation.clinical_notes = notes_in.clinical_notes
+        if hasattr(notes_in, "diagnosis") and notes_in.diagnosis is not None:
+            consultation.diagnosis = notes_in.diagnosis
+        if hasattr(notes_in, "prescriptions") and notes_in.prescriptions is not None:
+            consultation.prescriptions = notes_in.prescriptions
+        if hasattr(notes_in, "follow_up_instructions") and notes_in.follow_up_instructions is not None:
+            consultation.follow_up_instructions = notes_in.follow_up_instructions
+
+        db.add(consultation)
+        db.commit()
+        db.refresh(consultation)
+        return consultation
+
+    @staticmethod
+    def complete_consultation(
+        db: Session,
+        queue_entry_id: str,
+        doctor_id: str,
+        notes_in: Optional[Any] = None,
+    ) -> Consultation:
+        """Transitions Consultation and QueueEntry to COMPLETED, calculates duration, persists notes, and completes Appointment."""
         entry = queue_repo.get(db, queue_entry_id)
         if not entry:
             raise NotFoundError(
@@ -131,6 +185,17 @@ class ConsultationService:
         if started_at.tzinfo is None:
             started_at = started_at.replace(tzinfo=datetime.timezone.utc)
         duration_seconds = max(0, int((now - started_at).total_seconds()))
+
+        # Update notes if supplied at completion time
+        if notes_in:
+            if hasattr(notes_in, "clinical_notes") and notes_in.clinical_notes is not None:
+                consultation.clinical_notes = notes_in.clinical_notes
+            if hasattr(notes_in, "diagnosis") and notes_in.diagnosis is not None:
+                consultation.diagnosis = notes_in.diagnosis
+            if hasattr(notes_in, "prescriptions") and notes_in.prescriptions is not None:
+                consultation.prescriptions = notes_in.prescriptions
+            if hasattr(notes_in, "follow_up_instructions") and notes_in.follow_up_instructions is not None:
+                consultation.follow_up_instructions = notes_in.follow_up_instructions
 
         # Update Consultation
         consultation.status = ConsultationStatus.COMPLETED

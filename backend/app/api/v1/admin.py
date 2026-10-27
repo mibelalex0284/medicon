@@ -11,8 +11,8 @@ from app.core.dependencies import (
 )
 from app.core.exceptions import AppException, BadRequestError, ConflictError, InternalServerError, NotFoundError
 from app.db.session import get_db
-from app.models.appointment import Appointment
-from app.models.consultation import Consultation
+from app.models.appointment import Appointment, AppointmentStatus
+from app.models.consultation import Consultation, ConsultationStatus
 from app.models.department import Department
 from app.models.doctor import Doctor
 from app.models.doctor_schedule import DoctorSchedule
@@ -20,11 +20,12 @@ from app.models.doctor_specialty import DoctorSpecialty
 from app.models.hospital import Hospital
 from app.models.patient import Patient
 from app.models.profile import Profile, UserRole
-from app.models.queue_entry import QueueEntry
+from app.models.queue_entry import QueueEntry, QueueStatus
 from app.models.specialty import Specialty
 from app.models.system_setting import SystemSetting
 from app.schemas.admin_settings import (
     AdminAccountCreatedResponse,
+    AdminAnalyticsOverviewResponse,
     AdminCreatePatientRequest,
     AdminDoctorLifecycleResponse,
     AdminOnboardDoctorRequest,
@@ -32,6 +33,8 @@ from app.schemas.admin_settings import (
     AdminSettingItem,
     AdminSettingsResponse,
     AdminUpdateDoctorStatusRequest,
+    DepartmentMetricResponse,
+    HourlyMetricResponse,
     UpdatePatientSelfRegistrationRequest,
 )
 from app.schemas.doctor_schedule import (
@@ -45,6 +48,210 @@ from app.services.system_setting_service import system_setting_service
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin Portal"])
+
+
+@router.get(
+    "/analytics/overview",
+    response_model=AdminAnalyticsOverviewResponse,
+    summary="Get Clinic Operational Analytics Overview (Admin Only)",
+    description="Aggregates live operational queue, wait times, department loads, and throughput from actual database records.",
+)
+def get_admin_analytics_overview(
+    hospital_id: Optional[str] = Query(None, description="Optional hospital ID to filter by"),
+    db: Session = Depends(get_db),
+    admin_user: AuthenticatedUser = Depends(require_admin),
+) -> AdminAnalyticsOverviewResponse:
+    effective_hospital = hospital_id or admin_user.hospital_id
+    if effective_hospital:
+        verify_hospital_access(effective_hospital, admin_user)
+
+    today = datetime.date.today()
+
+    # Base queries scoped to hospital if specified
+    q_filter = [QueueEntry.queue_date == today]
+    apt_filter = [Appointment.appointment_date == today]
+    doc_filter = [Doctor.is_active == True]
+    dept_filter = [Department.is_active == True]
+
+    if effective_hospital:
+        q_filter.append(QueueEntry.hospital_id == effective_hospital)
+        apt_filter.append(Appointment.hospital_id == effective_hospital)
+        doc_filter.append(Doctor.hospital_id == effective_hospital)
+        dept_filter.append(Department.hospital_id == effective_hospital)
+
+    # 1. Fetch today's queue entries and appointments
+    queue_entries: List[QueueEntry] = db.query(QueueEntry).filter(*q_filter).all()
+    today_appointments: List[Appointment] = db.query(Appointment).filter(*apt_filter).all()
+
+    # Total unique patients today
+    patient_ids = set()
+    for qe in queue_entries:
+        patient_ids.add(qe.patient_id)
+    for apt in today_appointments:
+        patient_ids.add(apt.patient_id)
+    total_patients_today = len(patient_ids)
+
+    # Counts by queue status
+    active_statuses = {QueueStatus.WAITING, QueueStatus.CALLED, QueueStatus.CHECKED_IN}
+    active_queue_count = sum(1 for qe in queue_entries if qe.status in active_statuses)
+    in_consultation_count = sum(1 for qe in queue_entries if qe.status == QueueStatus.IN_CONSULTATION)
+    completed_today = sum(1 for qe in queue_entries if qe.status == QueueStatus.COMPLETED)
+
+    # Wait times: calculated for entries where called_at is present
+    wait_minutes_list: List[float] = []
+    urgent_wait_count = 0
+    urgent_delayed_count = 0
+
+    for qe in queue_entries:
+        if qe.called_at and qe.checked_in_at:
+            wait_secs = (qe.called_at - qe.checked_in_at).total_seconds()
+            if wait_secs >= 0:
+                mins = wait_secs / 60.0
+                wait_minutes_list.append(mins)
+                is_urgent = False
+                if qe.appointment and qe.appointment.reason:
+                    r_lower = qe.appointment.reason.lower()
+                    if "urgent" in r_lower or "emergency" in r_lower:
+                        is_urgent = True
+                if is_urgent:
+                    urgent_wait_count += 1
+                    if mins > 15.0:
+                        urgent_delayed_count += 1
+
+    if wait_minutes_list:
+        mean_wait_minutes = round(sum(wait_minutes_list) / len(wait_minutes_list), 1)
+        sorted_waits = sorted(wait_minutes_list)
+        p90_idx = int((len(sorted_waits) - 1) * 0.9)
+        p90_wait_minutes = round(sorted_waits[p90_idx], 1)
+    else:
+        mean_wait_minutes = 0.0
+        p90_wait_minutes = 0.0
+
+    urgent_delay_rate = (
+        round((urgent_delayed_count / urgent_wait_count) * 100.0, 1)
+        if urgent_wait_count > 0
+        else 0.0
+    )
+
+    # Doctor utilization and punctuality
+    active_doctors: List[Doctor] = db.query(Doctor).filter(*doc_filter).all()
+    num_active_doctors = len(active_doctors)
+    if num_active_doctors > 0 and (in_consultation_count > 0 or completed_today > 0):
+        doc_utilization = min(
+            100.0,
+            round(((in_consultation_count * 1.5 + completed_today) / max(1.0, num_active_doctors * 6.0)) * 100.0, 1),
+        )
+    else:
+        doc_utilization = 0.0
+
+    punctual_count = 0
+    checked_in_appts = 0
+    for qe in queue_entries:
+        if qe.appointment and qe.appointment.scheduled_start and qe.checked_in_at:
+            checked_in_appts += 1
+            checkin_time = qe.checked_in_at.time()
+            sched_time = qe.appointment.scheduled_start
+            delta_mins = abs(
+                (checkin_time.hour * 60 + checkin_time.minute)
+                - (sched_time.hour * 60 + sched_time.minute)
+            )
+            if delta_mins <= 15:
+                punctual_count += 1
+
+    punctuality_rate = (
+        round((punctual_count / checked_in_appts) * 100.0, 1)
+        if checked_in_appts > 0
+        else 100.0 if total_patients_today == 0 else 0.0
+    )
+
+    # 2. Department metrics
+    departments = db.query(Department).filter(*dept_filter).all()
+    dept_metrics: List[DepartmentMetricResponse] = []
+
+    for dept in departments:
+        dept_docs = [d for d in active_doctors if d.department_id == dept.id]
+        dept_doc_ids = {d.id for d in dept_docs}
+
+        dept_entries = [qe for qe in queue_entries if qe.doctor_id in dept_doc_ids]
+        dept_waiting = sum(1 for qe in dept_entries if qe.status in active_statuses)
+
+        dept_waits = []
+        dept_urgent = 0
+        for qe in dept_entries:
+            if qe.called_at and qe.checked_in_at:
+                w_sec = (qe.called_at - qe.checked_in_at).total_seconds()
+                if w_sec >= 0:
+                    dept_waits.append(w_sec / 60.0)
+            if qe.appointment and qe.appointment.reason:
+                r = qe.appointment.reason.lower()
+                if "urgent" in r or "emergency" in r:
+                    dept_urgent += 1
+
+        if dept_waits:
+            dept_mean = round(sum(dept_waits) / len(dept_waits), 1)
+            sorted_dw = sorted(dept_waits)
+            d_p90 = round(sorted_dw[int((len(sorted_dw) - 1) * 0.9)], 1)
+        else:
+            dept_mean = 0.0
+            d_p90 = 0.0
+
+        bottleneck = None
+        if dept_waiting > 8:
+            bottleneck = f"High intake volume ({dept_waiting} waiting)"
+        elif dept_waiting > 0 and len(dept_docs) == 0:
+            bottleneck = "No active physicians assigned"
+
+        dept_metrics.append(
+            DepartmentMetricResponse(
+                id=dept.id,
+                name=dept.name,
+                code=dept.code,
+                active_doctors=len(dept_docs),
+                total_waiting=dept_waiting,
+                mean_wait_minutes=dept_mean,
+                p90_wait_minutes=d_p90,
+                urgent_cases_count=dept_urgent,
+                current_bottleneck=bottleneck,
+            )
+        )
+
+    # 3. Hourly Flow (08:00 to 17:00)
+    hourly_flow: List[HourlyMetricResponse] = []
+    hourly_arrivals = {h: 0 for h in range(8, 18)}
+    hourly_completed = {h: 0 for h in range(8, 18)}
+
+    for qe in queue_entries:
+        if qe.checked_in_at:
+            h = qe.checked_in_at.hour
+            if h in hourly_arrivals:
+                hourly_arrivals[h] += 1
+        if qe.completed_at:
+            h = qe.completed_at.hour
+            if h in hourly_completed:
+                hourly_completed[h] += 1
+
+    for h in range(8, 18):
+        hourly_flow.append(
+            HourlyMetricResponse(
+                hour=f"{h:02d}:00",
+                arrivals=hourly_arrivals[h],
+                completed=hourly_completed[h],
+            )
+        )
+
+    return AdminAnalyticsOverviewResponse(
+        total_patients_today=total_patients_today,
+        active_queue_count=active_queue_count,
+        in_consultation_count=in_consultation_count,
+        completed_today=completed_today,
+        mean_wait_minutes=mean_wait_minutes,
+        p90_wait_minutes=p90_wait_minutes,
+        urgent_delay_rate=urgent_delay_rate,
+        doctor_utilization_rate=doc_utilization,
+        punctuality_rate=punctuality_rate,
+        departments=dept_metrics,
+        hourly_flow=hourly_flow,
+    )
 
 
 @router.get(

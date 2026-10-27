@@ -35,7 +35,7 @@ export default function DoctorLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { logout, loginAsRole, user, isLoading } = useAuth();
+  const { logout, user, isLoading } = useAuth();
   const router = useRouter();
   const [doctor, setDoctor] = useState<DoctorResponse | null>(null);
   const [isLoadingDoctor, setIsLoadingDoctor] = useState<boolean>(true);
@@ -109,7 +109,7 @@ export default function DoctorLayout({
               </div>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-teal-400 block">
-                  CareRoute-X
+                  MediLink
                 </span>
                 <span className="text-base font-bold text-white tracking-tight">
                   Clinical Workspace
@@ -175,27 +175,8 @@ export default function DoctorLayout({
             })}
           </nav>
 
-          {/* Role switcher & Logout */}
+          {/* Logout */}
           <div className="p-4 border-t border-slate-800 space-y-2 text-xs">
-            {process.env.NODE_ENV === "development" && (
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <button
-                  onClick={() => loginAsRole("patient")}
-                  className="py-1.5 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1"
-                >
-                  <Activity size={12} />
-                  Patient
-                </button>
-                <button
-                  onClick={() => loginAsRole("admin")}
-                  className="py-1.5 px-2 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center gap-1"
-                >
-                  <Building2 size={12} />
-                  Admin
-                </button>
-              </div>
-            )}
-
             <button
               onClick={logout}
               className="w-full py-1.5 px-2 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded flex items-center justify-center gap-1.5"

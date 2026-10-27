@@ -17,6 +17,8 @@ from app.schemas.doctor import (
     DoctorResponse,
     DoctorIntakeStatusResponse,
     DoctorIntakeStatusUpdate,
+    DoctorWorkloadResponse,
+    DoctorHourlyWorkload,
 )
 from app.schemas.doctor_recommendation import (
     DoctorRecommendationRequest,
@@ -182,6 +184,121 @@ def get_current_doctor(
     resp = DoctorResponse.model_validate(doctor_service.get_doctor(db, doc.id))
     resp.is_accepting_patients = system_setting_service.get_doctor_intake_status(db, doc.id)
     return resp
+
+
+@router.get(
+    "/me/workload",
+    response_model=DoctorWorkloadResponse,
+    summary="Get Current Doctor Workload & Throughput",
+    description="Calculates completed consultations, duration averages, and hourly flow for the authenticated doctor.",
+)
+def get_current_doctor_workload(
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_doctor),
+) -> DoctorWorkloadResponse:
+    from sqlalchemy import or_
+    from app.models.consultation import Consultation, ConsultationStatus
+    from app.models.doctor import Doctor
+    from app.models.profile import Profile
+    from app.models.queue_entry import QueueEntry, QueueStatus
+
+    doc = (
+        db.query(Doctor)
+        .join(Profile, Doctor.profile_id == Profile.id)
+        .filter(or_(Profile.auth_user_id == current_user.id, Profile.id == current_user.id))
+        .first()
+    )
+    if not doc:
+        raise ForbiddenError(
+            message="No registered doctor record found for your user account",
+            code="DOCTOR_RECORD_NOT_FOUND",
+        )
+
+    today = datetime.date.today()
+    today_start = datetime.datetime.combine(today, datetime.time.min, tzinfo=datetime.timezone.utc)
+
+    # 1. Consultations completed today
+    completed_consults: List[Consultation] = (
+        db.query(Consultation)
+        .filter(
+            Consultation.doctor_id == doc.id,
+            Consultation.status == ConsultationStatus.COMPLETED,
+            Consultation.started_at >= today_start,
+        )
+        .all()
+    )
+    patients_completed_today = len(completed_consults)
+
+    # 2. Active in room or waiting in queue
+    active_statuses = {QueueStatus.WAITING, QueueStatus.CALLED, QueueStatus.IN_CONSULTATION, QueueStatus.CHECKED_IN}
+    active_in_room_or_waiting = (
+        db.query(QueueEntry)
+        .filter(
+            QueueEntry.doctor_id == doc.id,
+            QueueEntry.queue_date == today,
+            QueueEntry.status.in_(active_statuses),
+        )
+        .count()
+    )
+
+    # 3. Mean consult duration
+    durations = [
+        c.duration_seconds
+        for c in completed_consults
+        if c.duration_seconds and c.duration_seconds > 0
+    ]
+    if durations:
+        mean_duration_minutes = round(sum(durations) / len(durations) / 60.0, 1)
+    else:
+        mean_duration_minutes = 0.0
+
+    # 4. Clinical utilization rate
+    if durations:
+        total_consult_minutes = sum(durations) / 60.0
+        clinical_utilization = min(100.0, round((total_consult_minutes / (8.0 * 60.0)) * 100.0, 1))
+    else:
+        clinical_utilization = 0.0
+
+    # 5. Hourly flow
+    hourly_slots: dict = {}
+    for c in completed_consults:
+        t = c.completed_at or c.started_at
+        if t:
+            h = t.hour
+            slot_key = f"{h:02d}:00 - {h+1:02d}:00"
+            if slot_key not in hourly_slots:
+                hourly_slots[slot_key] = {"count": 0, "durations": []}
+            hourly_slots[slot_key]["count"] += 1
+            if c.duration_seconds and c.duration_seconds > 0:
+                hourly_slots[slot_key]["durations"].append(c.duration_seconds / 60.0)
+
+    hourly_flow: List[DoctorHourlyWorkload] = []
+    for slot_key in sorted(hourly_slots.keys()):
+        data = hourly_slots[slot_key]
+        avg_min = (
+            round(sum(data["durations"]) / len(data["durations"]), 1)
+            if data["durations"]
+            else 0.0
+        )
+        hourly_flow.append(
+            DoctorHourlyWorkload(
+                hour=slot_key,
+                count=data["count"],
+                avg_minutes=avg_min,
+            )
+        )
+
+    doctor_name = doc.profile.full_name if doc.profile else "Doctor"
+
+    return DoctorWorkloadResponse(
+        doctor_id=doc.id,
+        doctor_name=doctor_name,
+        patients_completed_today=patients_completed_today,
+        active_in_room_or_waiting=active_in_room_or_waiting,
+        mean_consult_duration_minutes=mean_duration_minutes,
+        clinical_utilization_rate=clinical_utilization,
+        hourly_flow=hourly_flow,
+    )
 
 
 @router.patch(

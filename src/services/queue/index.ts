@@ -85,6 +85,10 @@ export interface BackendConsultationResponse {
   doctor_name?: string | null;
   token_number?: string | null;
   chief_complaint?: string | null;
+  clinical_notes?: string | null;
+  diagnosis?: string | null;
+  prescriptions?: string | null;
+  follow_up_instructions?: string | null;
 }
 
 async function handleResponse<T>(res: Response): Promise<T> {
@@ -229,6 +233,23 @@ export function mapBackendConsultationToFrontend(
     ? Math.max(0, Math.floor((now - new Date(startTime).getTime()) / 1000))
     : 0;
 
+  let parsedPrescriptions: string[] = [];
+  if (raw.prescriptions) {
+    try {
+      const parsed = JSON.parse(raw.prescriptions);
+      if (Array.isArray(parsed)) {
+        parsedPrescriptions = parsed.map(String);
+      } else {
+        parsedPrescriptions = [raw.prescriptions];
+      }
+    } catch {
+      parsedPrescriptions = raw.prescriptions
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+
   return {
     id: raw.id,
     queueEntryId: raw.queue_entry_id,
@@ -242,9 +263,10 @@ export function mapBackendConsultationToFrontend(
     endTime: raw.completed_at || undefined,
     elapsedSeconds: raw.duration_seconds ?? elapsed,
     expectedDurationRange: { min: 12, max: 18 },
-    clinicalNotes: "",
-    diagnosis: "",
-    prescriptions: [],
+    clinicalNotes: raw.clinical_notes || "",
+    diagnosis: raw.diagnosis || "",
+    prescriptions: parsedPrescriptions,
+    followUpRecommendation: raw.follow_up_instructions || "",
     intakeSummary: {
       chiefComplaint: raw.chief_complaint || "Outpatient Consultation",
     },
@@ -338,16 +360,77 @@ export class QueueService {
   }
 
   /**
+   * GET /api/v1/queues/consultation/{queue_entry_id}
+   * Retrieves consultation by queue entry id.
+   */
+  async getConsultationByQueueEntry(queueEntryId: string): Promise<Consultation | null> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/queues/consultation/${encodeURIComponent(queueEntryId)}`,
+      {
+        method: "GET",
+        headers,
+      }
+    );
+    if (res.status === 404) {
+      return null;
+    }
+    const data = await handleResponse<BackendConsultationResponse>(res);
+    return mapBackendConsultationToFrontend(data);
+  }
+
+  /**
+   * PUT /api/v1/queues/consultation/{consultation_id}/notes
+   * Authoritatively persists clinical notes for an active consultation.
+   */
+  async saveConsultationNotes(
+    consultationId: string,
+    notes: {
+      clinical_notes?: string;
+      diagnosis?: string;
+      prescriptions?: string;
+      follow_up_instructions?: string;
+    }
+  ): Promise<Consultation> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/queues/consultation/${encodeURIComponent(consultationId)}/notes`,
+      {
+        method: "PUT",
+        headers: {
+          ...headers,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(notes),
+      }
+    );
+    const data = await handleResponse<BackendConsultationResponse>(res);
+    return mapBackendConsultationToFrontend(data);
+  }
+
+  /**
    * POST /api/v1/queues/{queue_entry_id}/complete
    * Authoritatively completes the consultation, queue entry, and appointment.
    */
-  async completeConsultation(queueEntryId: string): Promise<Consultation> {
+  async completeConsultation(
+    queueEntryId: string,
+    notes?: {
+      clinical_notes?: string;
+      diagnosis?: string;
+      prescriptions?: string;
+      follow_up_instructions?: string;
+    }
+  ): Promise<Consultation> {
     const headers = await getAuthHeaders();
     const res = await fetch(
       `${API_BASE_URL}/api/v1/queues/${encodeURIComponent(queueEntryId)}/complete`,
       {
         method: "POST",
-        headers,
+        headers: {
+          ...headers,
+          ...(notes ? { "Content-Type": "application/json" } : {}),
+        },
+        body: notes ? JSON.stringify(notes) : undefined,
       }
     );
     const data = await handleResponse<BackendConsultationResponse>(res);
@@ -378,35 +461,6 @@ export class QueueService {
     return this.getDoctorQueue("me");
   }
 
-  /**
-   * Backward-compatibility helper for legacy checkInPatient caller.
-   */
-  checkInPatient(
-    patientId: string,
-    _patientName: string,
-    _doctorId: string,
-    _doctorName: string,
-    _chiefComplaint: string,
-    _urgency: "routine" | "urgent" | "emergency"
-  ): QueueEntry {
-    return {
-      id: `q_${Date.now()}`,
-      token: "A01",
-      patientId,
-      patientName: "Patient",
-      doctorId: "",
-      doctorName: "",
-      department: "Outpatient Clinic",
-      roomNumber: "Room 204",
-      status: "waiting",
-      positionAhead: 0,
-      estimatedWaitMinutes: { min: 5, max: 15 },
-      triageUrgency: "routine",
-      chiefComplaint: "Outpatient visit",
-      checkInTime: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      updatedAt: new Date().toISOString(),
-    };
-  }
 
   /**
    * Subscription helper that polls periodically or notifies listeners.

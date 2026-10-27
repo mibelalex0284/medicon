@@ -100,3 +100,36 @@ class AdminResendInvitationResponse(BaseModel):
     message: str
     auth_provisioned: bool = Field(default=True, description="True if link was provisioned via Supabase Auth")
 
+
+class DepartmentMetricResponse(BaseModel):
+    id: str
+    name: str
+    code: Optional[str] = None
+    active_doctors: int
+    total_waiting: int
+    mean_wait_minutes: float
+    p90_wait_minutes: float
+    urgent_cases_count: int
+    current_bottleneck: Optional[str] = None
+
+
+class HourlyMetricResponse(BaseModel):
+    hour: str
+    arrivals: int
+    completed: int
+
+
+class AdminAnalyticsOverviewResponse(BaseModel):
+    total_patients_today: int
+    active_queue_count: int
+    in_consultation_count: int
+    completed_today: int
+    mean_wait_minutes: float
+    p90_wait_minutes: float
+    urgent_delay_rate: float
+    doctor_utilization_rate: float
+    punctuality_rate: float
+    departments: List[DepartmentMetricResponse] = []
+    hourly_flow: List[HourlyMetricResponse] = []
+
+

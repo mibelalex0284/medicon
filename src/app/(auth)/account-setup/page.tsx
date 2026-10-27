@@ -215,7 +215,7 @@ function AccountSetupContent() {
             </div>
             <div>
               <span className="text-xs font-bold uppercase tracking-wider text-sky-600 block">
-                CareRoute-X Security
+                MediLink Security
               </span>
               <span className="text-xl font-bold text-slate-900 tracking-tight">
                 Account Activation
@@ -424,7 +424,7 @@ function AccountSetupContent() {
           </div>
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-sky-600 block">
-              CareRoute-X
+              MediLink
             </span>
             <span className="text-xl font-bold text-slate-900 tracking-tight">
               Account Provisioning Required
@@ -664,7 +664,7 @@ function AccountSetupContent() {
               Sign Out
             </button>
             <span className="text-[11px] text-slate-400">
-              CareRoute-X Safe Tenant System
+              MediLink Safe Tenant System
             </span>
           </div>
         </div>

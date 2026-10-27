@@ -33,6 +33,8 @@ class QueueService:
         appointment_id: str,
         *,
         actor_auth_user_id: str,
+        is_doctor: bool = False,
+        is_admin: bool = False,
     ) -> QueueEntry:
         appt = appointment_repo.get(db, appointment_id)
         if not appt:
@@ -41,13 +43,33 @@ class QueueService:
                 code="APPOINTMENT_NOT_FOUND",
             )
 
-        # 1. Authoritative check: only the appointment's patient may check in
-        patient = patient_repo.get(db, appt.patient_id)
-        if not patient or patient.profile.auth_user_id != actor_auth_user_id:
-            raise ForbiddenError(
-                message="Access forbidden: you can only check in for your own appointments",
-                code="FORBIDDEN_CHECK_IN",
+        # 1. Authoritative check:
+        # Patient may check in their own appointment.
+        # Assigned doctor may check in their patient.
+        # Admin may check in for clinic operations.
+        if is_doctor:
+            from app.models.doctor import Doctor
+            from app.models.profile import Profile
+            doc = (
+                db.query(Doctor)
+                .join(Profile)
+                .filter(Profile.auth_user_id == actor_auth_user_id)
+                .first()
             )
+            if not doc or doc.id != appt.doctor_id:
+                raise ForbiddenError(
+                    message="Access forbidden: you cannot check in patients assigned to another doctor",
+                    code="NOT_ASSIGNED_DOCTOR",
+                )
+        elif is_admin:
+            pass  # Authorized administrative check-in
+        else:
+            patient = patient_repo.get(db, appt.patient_id)
+            if not patient or patient.profile.auth_user_id != actor_auth_user_id:
+                raise ForbiddenError(
+                    message="Access forbidden: you can only check in for your own appointments",
+                    code="FORBIDDEN_CHECK_IN",
+                )
 
         # 2. Eligibility checks
         if appt.status == AppointmentStatus.CANCELLED:

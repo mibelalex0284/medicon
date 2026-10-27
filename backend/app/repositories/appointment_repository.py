@@ -65,7 +65,17 @@ class AppointmentRepository(
         skip: int = 0,
         limit: int = 100,
     ) -> List[Appointment]:
-        query = db.query(Appointment)
+        from sqlalchemy.orm import joinedload
+        from app.models.patient import Patient
+        from app.models.doctor import Doctor
+        query = (
+            db.query(Appointment)
+            .options(
+                joinedload(Appointment.doctor).joinedload(Doctor.profile),
+                joinedload(Appointment.patient).joinedload(Patient.profile),
+                joinedload(Appointment.queue_entry),
+            )
+        )
         if patient_id:
             query = query.filter(Appointment.patient_id == patient_id)
         if doctor_id:

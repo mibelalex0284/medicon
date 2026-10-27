@@ -375,3 +375,63 @@ class TestProductionConfigurationValidation:
         )
         cfg.validate_production_configuration()
 
+
+def test_clock_skew_iat_within_leeway_succeeds():
+    """Verifies that slight clock skew where iat is slightly ahead of server time succeeds due to leeway."""
+    import jwt
+    from datetime import datetime, timezone
+    from app.core.config import settings
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    claims = {
+        "sub": "clock-skew-user",
+        "role": "patient",
+        "iss": f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1",
+        "exp": now + 3600,
+        "iat": now + 5,  # 5 seconds in future (simulating Supabase NTP forward clock skew)
+    }
+    token = jwt.encode(claims, "dev-insecure-test-signing-secret-32bytes-min", algorithm="HS256")
+    decoded = decode_jwt_token(token)
+    assert decoded["sub"] == "clock-skew-user"
+
+
+def test_clock_skew_iat_beyond_leeway_fails():
+    """Verifies that excessive clock skew where iat exceeds leeway is rejected with TOKEN_NOT_YET_VALID."""
+    import jwt
+    from datetime import datetime, timezone
+    from app.core.config import settings
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    claims = {
+        "sub": "future-user",
+        "role": "patient",
+        "iss": f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1",
+        "exp": now + 3600,
+        "iat": now + 120,  # 2 minutes in future (exceeding 60s leeway)
+    }
+    token = jwt.encode(claims, "dev-insecure-test-signing-secret-32bytes-min", algorithm="HS256")
+    with pytest.raises(UnauthorizedError) as exc_info:
+        decode_jwt_token(token)
+    assert exc_info.value.code == "TOKEN_NOT_YET_VALID"
+
+
+def test_expired_token_strictly_rejected_even_within_leeway():
+    """Verifies that expired tokens are strictly rejected even if within the 60s leeway window."""
+    import jwt
+    from datetime import datetime, timezone
+    from app.core.config import settings
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    claims = {
+        "sub": "recently-expired-user",
+        "role": "patient",
+        "iss": f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1",
+        "exp": now - 5,  # 5 seconds expired (within 60s leeway)
+        "iat": now - 3600,
+    }
+    token = jwt.encode(claims, "dev-insecure-test-signing-secret-32bytes-min", algorithm="HS256")
+    with pytest.raises(UnauthorizedError) as exc_info:
+        decode_jwt_token(token)
+    assert exc_info.value.code == "TOKEN_EXPIRED"
+
+

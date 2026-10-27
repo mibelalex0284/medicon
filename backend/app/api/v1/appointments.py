@@ -167,10 +167,13 @@ def cancel_appointment(
 def check_in_appointment(
     appointment_id: str,
     db: Session = Depends(get_db),
-    current_user: AuthenticatedUser = Depends(require_patient),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> QueueEntryResponse:
     return queue_service.check_in(
         db,
         appointment_id,
         actor_auth_user_id=current_user.id,
+        is_doctor=current_user.is_doctor,
+        is_admin=current_user.is_admin,
     )
+

@@ -59,7 +59,7 @@ export function EmergencyBanner({ alert, onDismiss }: EmergencyBannerProps) {
           </div>
 
           <p className="text-[11px] text-red-700/90 pt-1">
-            CareRoute-X provides clinical guidance and triage navigation. This is not a final medical diagnosis.
+            MediLink provides clinical guidance and triage navigation. This is not a final medical diagnosis.
           </p>
         </div>
       </div>

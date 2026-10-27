@@ -1,39 +1,77 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { analyticsService } from "@/services/analytics";
-import { queueService } from "@/services/queue";
-import { ClinicAnalytics, DepartmentStats, QueueEntry } from "@/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ClinicAnalytics, DepartmentStats } from "@/types";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
   Users,
   Clock,
   AlertTriangle,
-  Activity,
   CheckCircle2,
   TrendingUp,
-  ArrowRight,
-  ShieldCheck,
-  Building2,
   Layers,
+  RefreshCw,
 } from "lucide-react";
 
 export default function AdminDashboard() {
-  const analytics: ClinicAnalytics = analyticsService.getClinicAnalytics();
-  const departments: DepartmentStats[] = analyticsService.getDepartmentStats();
-  const [queueEntries, setQueueEntries] = useState<QueueEntry[]>([]);
+  const [analytics, setAnalytics] = useState<ClinicAnalytics | null>(null);
+  const [departments, setDepartments] = useState<DepartmentStats[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    queueService.getAllQueue().then(setQueueEntries).catch(() => {});
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await analyticsService.getOverview();
+      setAnalytics(data.analytics);
+      setDepartments(data.departments);
+    } catch (err: any) {
+      setError(err.message || "Failed to load operational analytics.");
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const isOperatingNormally = analytics.urgentDelayRate < 5.0 && analytics.meanWaitMinutes < 30;
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[360px] space-y-3">
+        <RefreshCw size={24} className="text-sky-600 animate-spin" />
+        <p className="text-sm font-medium text-slate-500">Loading clinic operations...</p>
+      </div>
+    );
+  }
+
+  if (error || !analytics) {
+    return (
+      <div className="p-6 rounded-2xl bg-white border border-rose-200 shadow-xs space-y-4 max-w-lg mx-auto text-center mt-12">
+        <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+          <AlertTriangle size={24} />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-lg font-bold text-slate-900">Unable to Load Operations Overview</h2>
+          <p className="text-xs text-slate-500">{error || "No data received from backend server."}</p>
+        </div>
+        <Button onClick={loadData} size="sm" className="gap-2 mx-auto">
+          <RefreshCw size={14} />
+          Retry Request
+        </Button>
+      </div>
+    );
+  }
+
+  const isOperatingNormally = analytics.urgentDelayRate <= 5.0 && analytics.meanWaitMinutes <= 30;
 
   return (
     <div className="space-y-6">
-      {/* 1. PRIMARY OPERATIONAL STATUS: Is the clinic operating normally? */}
+      {/* 1. PRIMARY OPERATIONAL STATUS */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <span className="text-xs font-semibold text-sky-700 uppercase tracking-wider">
@@ -57,25 +95,25 @@ export default function AdminDashboard() {
         >
           {isOperatingNormally ? (
             <>
-              <CheckCircle2 size={18} className="text-emerald-700" />
+              <CheckCircle2 size={18} className="text-emerald-700 shrink-0" />
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider block">
                   Normal Operations
                 </span>
                 <span className="text-[11px] text-emerald-800">
-                  All 4 departments within target wait thresholds
+                  Wait times within service targets across active departments
                 </span>
               </div>
             </>
           ) : (
             <>
-              <AlertTriangle size={18} className="text-amber-700" />
+              <AlertTriangle size={18} className="text-amber-700 shrink-0" />
               <div>
                 <span className="text-xs font-bold uppercase tracking-wider block">
-                  Capacity Delays Detected
+                  Capacity Threshold Exceeded
                 </span>
                 <span className="text-[11px] text-amber-800">
-                  Cardiovascular Pavilion exceeding P90 threshold
+                  Elevated wait times or queue volumes detected
                 </span>
               </div>
             </>
@@ -83,7 +121,7 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* 2. CORE OPERATIONAL METRICS ROW (Strictly meaningful metrics) */}
+      {/* 2. CORE OPERATIONAL METRICS ROW */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-slate-200 bg-white">
           <CardContent className="p-4 space-y-1">
@@ -97,7 +135,7 @@ export default function AdminDashboard() {
               {analytics.activeQueueCount}
             </p>
             <span className="text-[11px] text-slate-500 block">
-              12 in active consultation · 25 waiting
+              {analytics.inConsultationCount} in active consultation · {analytics.activeQueueCount} waiting
             </span>
           </CardContent>
         </Card>
@@ -114,8 +152,14 @@ export default function AdminDashboard() {
               {analytics.meanWaitMinutes} / {analytics.p90WaitMinutes}
               <span className="text-sm font-normal text-slate-500 ml-1">min</span>
             </p>
-            <span className="text-[11px] text-emerald-600 font-medium block">
-              Within 45 min target service SLA
+            <span
+              className={`text-[11px] font-medium block ${
+                analytics.p90WaitMinutes <= 45 ? "text-emerald-600" : "text-amber-600"
+              }`}
+            >
+              {analytics.p90WaitMinutes <= 45
+                ? "Within 45 min target service SLA"
+                : "Exceeding 45 min target service SLA"}
             </span>
           </CardContent>
         </Card>
@@ -131,8 +175,14 @@ export default function AdminDashboard() {
             <p className="text-3xl font-black text-slate-900 tabular-nums">
               {analytics.urgentDelayRate}%
             </p>
-            <span className="text-[11px] text-emerald-600 font-medium block">
-              Below 5% clinical escalation threshold
+            <span
+              className={`text-[11px] font-medium block ${
+                analytics.urgentDelayRate <= 5.0 ? "text-emerald-600" : "text-amber-600"
+              }`}
+            >
+              {analytics.urgentDelayRate <= 5.0
+                ? "Below 5% clinical escalation threshold"
+                : "Above 5% clinical escalation threshold"}
             </span>
           </CardContent>
         </Card>
@@ -172,88 +222,77 @@ export default function AdminDashboard() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {departments.map((dept) => (
-            <Card key={dept.id} className="border-slate-200 bg-white shadow-2xs">
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">
-                      {dept.name}
-                    </h3>
-                    <p className="text-xs text-slate-500">
-                      {dept.activeDoctors} Physicians On-Duty · {dept.totalWaiting} Waiting
-                    </p>
-                  </div>
-                  <span className="text-xs font-mono font-bold bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md">
-                    Mean: {dept.meanWaitMinutes}m
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 text-xs pt-1 border-t border-slate-100">
-                  <div className="p-2 bg-slate-50 rounded-lg">
-                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">
-                      P90 Wait
+        {departments.length === 0 ? (
+          <div className="p-8 text-center bg-white rounded-xl border border-slate-200">
+            <Layers size={24} className="text-slate-400 mx-auto mb-2" />
+            <p className="text-sm font-medium text-slate-600">No clinical departments registered</p>
+            <p className="text-xs text-slate-400 mt-1">
+              Add departments in Hospital Settings to track wing-level outpatient flow.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {departments.map((dept) => (
+              <Card key={dept.id} className="border-slate-200 bg-white shadow-2xs">
+                <CardContent className="p-5 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900">
+                        {dept.name}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {dept.activeDoctors} Physicians On-Duty · {dept.totalWaiting} Waiting
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold bg-slate-100 text-slate-800 px-2.5 py-1 rounded-md">
+                      Mean: {dept.meanWaitMinutes}m
                     </span>
-                    <strong className="text-slate-900 font-mono">
-                      {dept.p90WaitMinutes} min
-                    </strong>
                   </div>
-                  <div className="p-2 bg-slate-50 rounded-lg">
-                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">
-                      Urgent Cases
-                    </span>
-                    <strong
-                      className={
-                        dept.urgentCasesCount > 0 ? "text-amber-700 font-bold" : "text-slate-700"
-                      }
-                    >
-                      {dept.urgentCasesCount}
-                    </strong>
-                  </div>
-                  <div className="p-2 bg-slate-50 rounded-lg">
-                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">
-                      Queue Load
-                    </span>
-                    <strong className="text-slate-800 font-mono">
-                      {dept.totalWaiting} Patients
-                    </strong>
-                  </div>
-                </div>
 
-                {dept.currentBottleneck && (
-                  <div className="p-2.5 rounded-lg bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
-                    <AlertTriangle size={14} className="text-amber-700 shrink-0" />
-                    <span>Bottleneck: {dept.currentBottleneck}</span>
+                  <div className="grid grid-cols-3 gap-2 text-xs pt-1 border-t border-slate-100">
+                    <div className="p-2 bg-slate-50 rounded-lg">
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">
+                        P90 Wait
+                      </span>
+                      <strong className="text-slate-900 font-mono">
+                        {dept.p90WaitMinutes} min
+                      </strong>
+                    </div>
+                    <div className="p-2 bg-slate-50 rounded-lg">
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">
+                        Urgent Cases
+                      </span>
+                      <strong
+                        className={
+                          dept.urgentCasesCount > 0 ? "text-amber-700 font-bold" : "text-slate-700"
+                        }
+                      >
+                        {dept.urgentCasesCount}
+                      </strong>
+                    </div>
+                    <div className="p-2 bg-slate-50 rounded-lg">
+                      <span className="text-slate-400 block text-[10px] uppercase font-semibold">
+                        Queue Load
+                      </span>
+                      <strong className="text-slate-800 font-mono">
+                        {dept.totalWaiting} Patients
+                      </strong>
+                    </div>
                   </div>
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </section>
 
-      {/* 4. FAST SCENARIO ANALYSIS ENTRY */}
-      <section className="p-5 rounded-2xl bg-linear-to-r from-slate-900 to-slate-800 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-md">
-        <div className="space-y-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-sky-400 block">
-            Operational Scenario Analysis
-          </span>
-          <h3 className="text-lg font-bold">
-            Simulate Capacity Adjustments & Surge Scenarios
-          </h3>
-          <p className="text-xs text-slate-300">
-            Model physician capacity changes and patient arrival spikes without affecting the live queue.
-          </p>
-        </div>
-
-        <Link href="/admin/simulation">
-          <Button size="md" className="bg-sky-600 hover:bg-sky-700 text-white font-semibold gap-2 shrink-0">
-            Open Simulation Sandbox
-            <ArrowRight size={16} />
-          </Button>
-        </Link>
+                  {dept.currentBottleneck && (
+                    <div className="p-2.5 rounded-lg bg-amber-50/80 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+                      <AlertTriangle size={14} className="text-amber-700 shrink-0" />
+                      <span>Bottleneck: {dept.currentBottleneck}</span>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );
 }
+

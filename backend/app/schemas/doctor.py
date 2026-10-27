@@ -62,3 +62,20 @@ class DoctorIntakeStatusResponse(BaseModel):
     is_accepting_patients: bool
     status: str
     message: str
+
+
+class DoctorHourlyWorkload(BaseModel):
+    hour: str
+    count: int
+    avg_minutes: float
+
+
+class DoctorWorkloadResponse(BaseModel):
+    doctor_id: str
+    doctor_name: str
+    patients_completed_today: int
+    active_in_room_or_waiting: int
+    mean_consult_duration_minutes: float
+    clinical_utilization_rate: float
+    hourly_flow: List[DoctorHourlyWorkload] = []
+

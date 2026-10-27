@@ -33,7 +33,7 @@ def normalize_database_url(url: str) -> str:
 
 class Settings(BaseSettings):
     # Application & Environment
-    PROJECT_NAME: str = "CareRoute-X API"
+    PROJECT_NAME: str = "MediLink API"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
     ENVIRONMENT: str = "development"
@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     SUPABASE_JWT_ALGORITHM: str = "ES256"
     SUPABASE_JWKS_URL: Optional[str] = "https://rkyrzctczohppspnzfxp.supabase.co/auth/v1/.well-known/jwks.json"
     SUPABASE_JWT_AUDIENCE: Optional[str] = None
+    JWT_LEEWAY_SECONDS: int = 60
 
     @field_validator("SUPABASE_JWT_SECRET", mode="before")
     @classmethod

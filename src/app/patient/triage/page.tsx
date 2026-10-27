@@ -382,7 +382,7 @@ function TriageChatContent() {
           <Activity size={24} />
         </div>
         <p className="text-sm font-medium text-slate-600">
-          Connecting to CareRoute-X clinical triage service...
+          Connecting to MediLink clinical triage service...
         </p>
       </div>
     );
@@ -590,7 +590,7 @@ function TriageChatContent() {
                   Clinical Intake Assistant
                 </span>
                 <div className="bg-white border border-slate-200 text-slate-800 rounded-2xl rounded-tl-xs p-4 shadow-2xs text-sm leading-relaxed">
-                  Hello! I am your CareRoute-X clinical intake assistant. Please
+                  Hello! I am your MediLink clinical intake assistant. Please
                   describe your symptoms, how long you have had them, and any
                   specific discomfort you are experiencing today.
                 </div>
@@ -718,7 +718,7 @@ function TriageChatContent() {
             </span>
             <span className="hidden sm:inline-flex items-center gap-1 text-slate-400">
               <Sparkles size={11} />
-              CareRoute-X Triage Engine
+              MediLink Triage Engine
             </span>
           </p>
         </div>

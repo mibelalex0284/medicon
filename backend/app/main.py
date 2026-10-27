@@ -11,7 +11,7 @@ from app.services.llm import get_llm_provider, close_llm_provider
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Application Startup: Initialize application-lifetime LLM provider / connection pool
-    logger.info("Initializing CareRoute-X application resources...")
+    logger.info("Initializing MediLink application resources...")
     settings.validate_production_configuration()
     try:
         get_llm_provider()
@@ -19,7 +19,7 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Could not eagerly initialize Gemini client at startup: {exc}")
     yield
     # Application Shutdown: Cleanly release HTTP connection pools and client resources
-    logger.info("Closing CareRoute-X application resources...")
+    logger.info("Closing MediLink application resources...")
     close_llm_provider()
 
 
@@ -29,7 +29,7 @@ def create_application() -> FastAPI:
         title=settings.PROJECT_NAME,
         version=settings.VERSION,
         description=(
-            "CareRoute-X Outpatient Care-Navigation and Queue-Management Platform API. "
+            "MediLink Outpatient Care-Navigation and Queue-Management Platform API. "
             "Exposes server-authoritative queue, appointments, triage safety, and consultation endpoints."
         ),
         docs_url="/docs",

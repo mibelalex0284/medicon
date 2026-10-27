@@ -2,7 +2,7 @@ import datetime
 import enum
 import uuid
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
@@ -76,6 +76,10 @@ class Consultation(Base, TimestampMixin):
         index=True,
     )
     duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    clinical_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    diagnosis: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prescriptions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    follow_up_instructions: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationships
     queue_entry: Mapped["QueueEntry"] = relationship(

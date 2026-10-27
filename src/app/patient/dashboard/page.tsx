@@ -76,10 +76,10 @@ export default function PatientDashboard() {
           Welcome back
         </span>
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-          {user?.name?.split(" ")[0] || "Sarah"}
+          {user?.name ? user.name.split(" ")[0] : "Patient"}
         </h1>
         <p className="text-sm text-slate-500 mt-0.5">
-          CareRoute-X Smart Outpatient Navigator
+          MediLink Smart Outpatient Navigator
         </p>
       </div>
 
@@ -161,7 +161,7 @@ export default function PatientDashboard() {
           <div className="mt-5 pt-4 border-t border-sky-100 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-slate-600 font-medium text-center sm:text-left">
               {activeQueue.status === "called"
-                ? "⚠️ Your token was called! Head to Room 204 immediately."
+                ? `⚠️ Your token was called! Head to ${activeQueue.roomNumber || "your consultation room"} immediately.`
                 : "You will receive an instant notification when your doctor is ready."}
             </p>
             <Link href="/patient/queue" className="w-full sm:w-auto">
@@ -252,7 +252,7 @@ export default function PatientDashboard() {
               What brings you in today?
             </h2>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Describe your symptoms in your own words. CareRoute-X will guide you
+              Describe your symptoms in your own words. MediLink will guide you
               through a structured intake assessment and match you with the right
               physician.
             </p>

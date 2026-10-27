@@ -1,5 +1,5 @@
 /**
- * Centralized emergency contact configuration for CareRoute-X.
+ * Centralized emergency contact configuration for MediLink.
  * Configured for India (Unified National Emergency Helpline 112 & Ambulance 108/102).
  */
 export const EMERGENCY_CONTACT = {

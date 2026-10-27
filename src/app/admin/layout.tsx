@@ -11,7 +11,6 @@ import {
   Layers,
   Calendar,
   BarChart3,
-  Sliders,
   Settings,
   LogOut,
   Activity,
@@ -26,7 +25,6 @@ const ADMIN_NAV = [
   { label: "Physicians", href: "/admin/doctors", icon: Stethoscope },
   { label: "Appointments", href: "/admin/appointments", icon: Calendar },
   { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
-  { label: "Simulation Sandbox", href: "/admin/simulation", icon: Sliders },
   { label: "Settings", href: "/admin/settings", icon: Settings },
 ];
 
@@ -36,7 +34,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, isLoading, logout, loginAsRole } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -88,7 +86,7 @@ export default function AdminLayout({
               </div>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-sky-400 block">
-                  CareRoute-X
+                  MediLink
                 </span>
                 <span className="text-base font-bold text-white tracking-tight">
                   Clinic Operations
@@ -149,27 +147,8 @@ export default function AdminLayout({
             })}
           </nav>
 
-          {/* Bottom Switcher & Sign Out */}
+          {/* Sign Out */}
           <div className="p-4 border-t border-slate-800/80 space-y-2 text-xs">
-            {process.env.NODE_ENV === "development" && (
-              <div className="grid grid-cols-2 gap-2 text-[11px]">
-                <button
-                  onClick={() => loginAsRole("patient")}
-                  className="py-1.5 px-2 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 flex items-center justify-center gap-1"
-                >
-                  <Activity size={12} />
-                  Patient
-                </button>
-                <button
-                  onClick={() => loginAsRole("doctor")}
-                  className="py-1.5 px-2 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 flex items-center justify-center gap-1"
-                >
-                  <Stethoscope size={12} />
-                  Doctor
-                </button>
-              </div>
-            )}
-
             <button
               onClick={logout}
               className="w-full py-1.5 px-2 text-rose-400 hover:text-rose-300 hover:bg-rose-950/40 rounded flex items-center justify-center gap-1.5"

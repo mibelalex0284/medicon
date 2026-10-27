@@ -16,12 +16,23 @@ class ConsultationCreate(ConsultationBase):
     pass
 
 
+class ConsultationNotesUpdate(BaseModel):
+    clinical_notes: Optional[str] = None
+    diagnosis: Optional[str] = None
+    prescriptions: Optional[str] = None
+    follow_up_instructions: Optional[str] = None
+
+
 class ConsultationResponse(ConsultationBase):
     id: str
     started_at: datetime
     completed_at: Optional[datetime] = None
     status: ConsultationStatus
     duration_seconds: Optional[int] = None
+    clinical_notes: Optional[str] = None
+    diagnosis: Optional[str] = None
+    prescriptions: Optional[str] = None
+    follow_up_instructions: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     patient_name: Optional[str] = None
@@ -30,3 +41,4 @@ class ConsultationResponse(ConsultationBase):
     chief_complaint: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+

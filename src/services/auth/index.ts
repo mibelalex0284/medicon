@@ -1,61 +1,22 @@
-import { User, UserRole, AuthoritativeRole, PatientProfile } from "../../types";
+import { User, UserRole, AuthoritativeRole } from "../../types";
 import { getSupabaseClient, isSupabaseConfigured } from "../../lib/supabase/client";
-
-const MOCK_USERS: Record<AuthoritativeRole, User> = {
-  patient: {
-    id: "pat_101",
-    email: "sarah.jenkins@example.com",
-    name: "Sarah Jenkins",
-    role: "patient",
-    createdAt: "2026-01-15T09:00:00Z",
-  },
-  doctor: {
-    id: "doc_202",
-    email: "dr.menon@careroute.org",
-    name: "Dr. Anita Menon, MD",
-    role: "doctor",
-    createdAt: "2025-06-10T08:30:00Z",
-  },
-  admin: {
-    id: "adm_303",
-    email: "ops.admin@careroute.org",
-    name: "Mark Evans (Clinic Operations)",
-    role: "admin",
-    createdAt: "2025-01-01T08:00:00Z",
-  },
-};
-
-const MOCK_PATIENT_PROFILE: PatientProfile = {
-  id: "prof_101",
-  userId: "pat_101",
-  mrn: "CRX-9281",
-  fullName: "Sarah Jenkins",
-  dateOfBirth: "1988-04-12",
-  gender: "Female",
-  phone: "+1 (555) 349-8201",
-  emergencyContact: {
-    name: "David Jenkins",
-    relationship: "Spouse",
-    phone: "+1 (555) 349-8202",
-  },
-  bloodType: "A+",
-  allergies: ["Penicillin", "Sulfa drugs"],
-  medications: ["Lisinopril 10mg (Daily)", "Cetirizine 10mg (As needed)"],
-  chronicConditions: ["Mild hypertension", "Seasonal allergic rhinitis"],
-  preferredLanguage: "English",
-  communicationPreference: "sms",
-};
 
 const AUTH_STORAGE_KEY = "careroute_user_session";
 
-const DEV_ROLE_TOKENS: Record<AuthoritativeRole, string | undefined> = {
-  patient: process.env.NEXT_PUBLIC_DEV_AUTH_TOKEN,
-  doctor: process.env.NEXT_PUBLIC_DEV_DOCTOR_AUTH_TOKEN,
-  admin: process.env.NEXT_PUBLIC_DEV_ADMIN_AUTH_TOKEN,
-};
-
 export class AuthService {
   private currentUser: User | null = null;
+  private isLoggingIn: boolean = false;
+  private inFlightProfileFetches: Map<
+    string,
+    Promise<{
+      role: UserRole;
+      hasProfile: boolean;
+      fullName?: string;
+      email?: string;
+      profileId?: string;
+      hospitalId?: string | null;
+    }>
+  > = new Map();
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -71,6 +32,10 @@ export class AuthService {
         this.currentUser = null;
       }
     }
+  }
+
+  getIsLoggingIn(): boolean {
+    return this.isLoggingIn;
   }
 
   getCurrentUser(): User | null {
@@ -95,6 +60,28 @@ export class AuthService {
     profileId?: string;
     hospitalId?: string | null;
   }> {
+    const existing = this.inFlightProfileFetches.get(token);
+    if (existing) {
+      return existing;
+    }
+
+    const fetchPromise = this._executeFetchAuthoritativeProfile(token);
+    this.inFlightProfileFetches.set(token, fetchPromise);
+    try {
+      return await fetchPromise;
+    } finally {
+      this.inFlightProfileFetches.delete(token);
+    }
+  }
+
+  private async _executeFetchAuthoritativeProfile(token: string): Promise<{
+    role: UserRole;
+    hasProfile: boolean;
+    fullName?: string;
+    email?: string;
+    profileId?: string;
+    hospitalId?: string | null;
+  }> {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
     let res: Response;
     try {
@@ -108,12 +95,37 @@ export class AuthService {
     }
 
     if (res.status === 401) {
-      throw new Error("AUTHENTICATION_EXPIRED");
+      let errorCode = "UNAUTHORIZED";
+      let errorMessage = "Authentication failed. Please verify your credentials and sign in again.";
+      try {
+        const errorJson = await res.json();
+        errorCode = errorJson.error?.code || errorJson.code || errorCode;
+        errorMessage = errorJson.error?.message || errorJson.message || errorMessage;
+      } catch {
+        // Body was not JSON
+      }
+
+      if (errorCode === "TOKEN_EXPIRED") {
+        const expiredErr = new Error("AUTHENTICATION_EXPIRED");
+        (expiredErr as any).code = "TOKEN_EXPIRED";
+        throw expiredErr;
+      }
+
+      const authErr = new Error(errorMessage);
+      (authErr as any).code = errorCode;
+      throw authErr;
     }
 
     if (!res.ok) {
+      let detailMsg = `status ${res.status}`;
+      try {
+        const errorJson = await res.json();
+        detailMsg = errorJson.error?.message || errorJson.message || errorJson.detail || detailMsg;
+      } catch {
+        // Body was not JSON
+      }
       throw new Error(
-        `Server error: Failed to verify account role with backend (status ${res.status}).`
+        `Server error: Failed to verify account role with backend (${detailMsg}).`
       );
     }
 
@@ -145,6 +157,10 @@ export class AuthService {
   }
 
   async restoreSession(): Promise<User | null> {
+    if (this.isLoggingIn) {
+      // Prevent auth listener or duplicate calls from racing with loginWithCredentials
+      return this.currentUser;
+    }
     if (typeof window === "undefined") return null;
 
     const supabase = getSupabaseClient();
@@ -205,101 +221,63 @@ export class AuthService {
   }
 
   async loginWithCredentials(email: string, password: string): Promise<User> {
-    const supabase = getSupabaseClient();
+    this.isLoggingIn = true;
+    try {
+      const supabase = getSupabaseClient();
 
-    if (supabase && isSupabaseConfigured()) {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      if (supabase && isSupabaseConfigured()) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-      if (error || !data.session) {
-        throw new Error(error?.message || "Invalid email or password");
-      }
+        if (error || !data.session) {
+          throw new Error(error?.message || "Invalid email or password");
+        }
 
-      const token = data.session.access_token;
-      if (typeof window !== "undefined") {
-        localStorage.setItem("careroute_auth_token", token);
-      }
-
-      let authResult;
-      try {
-        authResult = await this.fetchAuthoritativeProfile(token);
-      } catch (err: any) {
-        this.currentUser = null;
+        const token = data.session.access_token;
         if (typeof window !== "undefined") {
-          localStorage.removeItem(AUTH_STORAGE_KEY);
+          localStorage.setItem("careroute_auth_token", token);
         }
-        throw new Error(
-          err.message || "Failed to resolve authenticated role permissions. Please try again."
-        );
-      }
 
-      const fullName =
-        authResult.fullName ||
-        data.session.user.user_metadata?.full_name ||
-        email;
-
-      const user: User = {
-        id: data.session.user.id,
-        email: data.session.user.email || email,
-        name: fullName,
-        role: authResult.role,
-        createdAt: data.session.user.created_at,
-        hospital_id: authResult.hospitalId || null,
-      };
-
-      this.currentUser = user;
-      if (typeof window !== "undefined") {
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-      }
-      return user;
-    }
-
-    // Fallback in development environments with unconfigured Supabase
-    if (process.env.NODE_ENV === "development") {
-      const normalizedEmail = email.toLowerCase().trim();
-      let matchedRole: AuthoritativeRole | null = null;
-
-      for (const [r, u] of Object.entries(MOCK_USERS)) {
-        if (u.email.toLowerCase() === normalizedEmail) {
-          matchedRole = r as AuthoritativeRole;
-          break;
+        let authResult;
+        try {
+          authResult = await this.fetchAuthoritativeProfile(token);
+        } catch (err: any) {
+          this.currentUser = null;
+          if (typeof window !== "undefined") {
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+          }
+          throw new Error(
+            err.message || "Failed to resolve authenticated role permissions. Please try again."
+          );
         }
+
+        const fullName =
+          authResult.fullName ||
+          data.session.user.user_metadata?.full_name ||
+          email;
+
+        const user: User = {
+          id: data.session.user.id,
+          email: data.session.user.email || email,
+          name: fullName,
+          role: authResult.role,
+          createdAt: data.session.user.created_at,
+          hospital_id: authResult.hospitalId || null,
+        };
+
+        this.currentUser = user;
+        if (typeof window !== "undefined") {
+          localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+        }
+        return user;
       }
 
-      if (!matchedRole) {
-        throw new Error(
-          "Supabase credentials are not configured. In development mode, sign in with one of the configured demo accounts: " +
-            "sarah.jenkins@example.com (patient), dr.menon@careroute.org (doctor), or ops.admin@careroute.org (admin)."
-        );
-      }
-
-      return this.loginAsRole(matchedRole);
+      throw new Error("Supabase authentication is not configured in this environment.");
+    } finally {
+      this.isLoggingIn = false;
     }
-
-    throw new Error("Supabase authentication is not configured in this environment.");
-  }
-
-  loginAsRole(role: UserRole): User {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Demo persona switching is strictly forbidden in production builds.");
-    }
-
-    if (role === "unregistered") {
-      throw new Error("Cannot simulate unregistered persona directly.");
-    }
-
-    const user = MOCK_USERS[role as AuthoritativeRole];
-    this.currentUser = user;
-    if (typeof window !== "undefined") {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-      const token = DEV_ROLE_TOKENS[role as AuthoritativeRole];
-      if (token) {
-        localStorage.setItem("careroute_auth_token", token);
-      }
-    }
-    return user;
   }
 
   async logout(): Promise<void> {
@@ -433,25 +411,6 @@ export class AuthService {
         };
         return user;
       }
-    }
-
-    if (process.env.NODE_ENV === "development") {
-      const user: User = {
-        id: `pat_${Date.now()}`,
-        email: payload.email,
-        name: payload.full_name,
-        role: "patient",
-        createdAt: new Date().toISOString(),
-      };
-      this.currentUser = user;
-      if (typeof window !== "undefined") {
-        localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
-        const token = DEV_ROLE_TOKENS.patient;
-        if (token) {
-          localStorage.setItem("careroute_auth_token", token);
-        }
-      }
-      return user;
     }
 
     throw new Error("Supabase authentication is not configured in this environment.");
@@ -625,10 +584,6 @@ export class AuthService {
       throw new Error(err.detail || err.message || "Failed to onboard physician");
     }
     return res.json();
-  }
-
-  getPatientProfile(): PatientProfile {
-    return MOCK_PATIENT_PROFILE;
   }
 }
 

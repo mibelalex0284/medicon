@@ -103,6 +103,7 @@ export type AppointmentStatus =
 export interface Appointment {
   id: string;
   patientId: string;
+  patientName?: string;
   doctorId: string;
   doctorName: string;
   doctorSpecialty: string;
@@ -113,6 +114,7 @@ export interface Appointment {
   reasonForVisit: string;
   triageUrgency?: TriageUrgency;
   queueToken?: string;
+  queueEntryId?: string;
   hospitalId?: string;
   scheduledStart?: string;
   scheduledEnd?: string;
@@ -226,3 +228,26 @@ export interface ClinicAnalytics {
   doctorUtilizationRate: number; // percentage e.g. 88%
   punctualityRate: number; // percentage e.g. 92%
 }
+
+export interface HourlyThroughput {
+  hour: string;
+  arrivals: number;
+  completed: number;
+}
+
+export interface DoctorHourlySlot {
+  hour: string;
+  count: number;
+  avgMinutes: number;
+}
+
+export interface DoctorWorkload {
+  doctorId: string;
+  doctorName: string;
+  patientsCompletedToday: number;
+  activeInRoomOrWaiting: number;
+  meanConsultDurationMinutes: number;
+  clinicalUtilizationRate: number;
+  hourlyFlow: DoctorHourlySlot[];
+}
+

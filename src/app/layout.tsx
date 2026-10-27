@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CareRoute-X | Outpatient Care Navigation & Queue Management",
+  title: "MediLink | Outpatient Care Navigation & Queue Management",
   description:
     "Production-grade outpatient care navigation, guided clinical triage, explainable doctor matching, and real-time live queue management.",
 };

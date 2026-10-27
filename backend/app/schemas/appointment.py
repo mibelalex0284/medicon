@@ -57,5 +57,7 @@ class AppointmentResponse(AppointmentBase):
     doctor_specialty: Optional[str] = None
     department_name: Optional[str] = None
     queue_token: Optional[str] = None
+    patient_name: Optional[str] = None
+    queue_entry_id: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

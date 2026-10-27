@@ -2,8 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { queueService } from "@/services/queue";
-import { analyticsService, CLINIC_DEPARTMENTS } from "@/services/analytics";
-import { QueueEntry } from "@/types";
+import { analyticsService } from "@/services/analytics";
+import { QueueEntry, DepartmentStats, ClinicAnalytics } from "@/types";
 import {
   Layers,
   Search,
@@ -28,9 +28,18 @@ export default function AdminQueuesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("active");
   const [searchQuery, setSearchQuery] = useState("");
   const [queue, setQueue] = useState<QueueEntry[]>([]);
-  const departments = CLINIC_DEPARTMENTS;
+  const [departments, setDepartments] = useState<DepartmentStats[]>([]);
+  const [analytics, setAnalytics] = useState<ClinicAnalytics | null>(null);
 
   useEffect(() => {
+    analyticsService
+      .getOverview()
+      .then((data) => {
+        setDepartments(data.departments);
+        setAnalytics(data.analytics);
+      })
+      .catch(() => {});
+
     const unsubscribe = queueService.subscribe((entries) => {
       setQueue(entries);
     });
@@ -46,11 +55,7 @@ export default function AdminQueuesPage() {
         !entry.department.toLowerCase().includes(targetDept.name.toLowerCase().slice(0, 10)) &&
         !entry.department.toLowerCase().includes(targetDept.id.replace("dep_", ""))
       ) {
-        // Fallback matching
-        if (selectedDeptId === "dep_adult_opd" && !entry.department.includes("Adult")) return false;
-        if (selectedDeptId === "dep_cardio" && !entry.department.includes("Cardio")) return false;
-        if (selectedDeptId === "dep_ortho" && !entry.department.includes("Ortho")) return false;
-        if (selectedDeptId === "dep_peds" && !entry.department.includes("Ped")) return false;
+        return false;
       }
     }
 
@@ -81,6 +86,9 @@ export default function AdminQueuesPage() {
       ["waiting", "called"].includes(q.status) &&
       (q.triageUrgency === "urgent" || q.triageUrgency === "emergency")
   ).length;
+
+  const meanWait = analytics ? `${analytics.meanWaitMinutes} min` : "0 min";
+  const p90Wait = analytics ? `${analytics.p90WaitMinutes} min` : "0 min";
 
   return (
     <div className="space-y-6">
@@ -113,7 +121,9 @@ export default function AdminQueuesPage() {
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Active Queue</p>
           <div className="flex items-baseline gap-2 mt-1">
             <p className="text-2xl font-bold text-slate-900">{activeCount}</p>
-            <span className="text-xs text-slate-500">across 4 wings</span>
+            <span className="text-xs text-slate-500">
+              across {departments.length} department{departments.length === 1 ? "" : "s"}
+            </span>
           </div>
         </div>
 
@@ -128,7 +138,7 @@ export default function AdminQueuesPage() {
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Mean Wait Time</p>
           <div className="flex items-baseline gap-2 mt-1">
-            <p className="text-2xl font-bold text-slate-900">22 min</p>
+            <p className="text-2xl font-bold text-slate-900">{meanWait}</p>
             <span className="text-xs text-emerald-600 font-medium">Within SLA</span>
           </div>
         </div>
@@ -136,7 +146,7 @@ export default function AdminQueuesPage() {
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">P90 Tail Wait</p>
           <div className="flex items-baseline gap-2 mt-1">
-            <p className="text-2xl font-bold text-slate-900">38 min</p>
+            <p className="text-2xl font-bold text-slate-900">{p90Wait}</p>
             <span className="text-xs text-slate-500">Target &lt; 45m</span>
           </div>
         </div>

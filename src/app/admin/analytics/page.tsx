@@ -1,41 +1,83 @@
 "use client";
 
-import React, { useState } from "react";
-import { analyticsService, CLINIC_DEPARTMENTS } from "@/services/analytics";
+import React, { useState, useEffect, useCallback } from "react";
+import { analyticsService } from "@/services/analytics";
+import { ClinicAnalytics, DepartmentStats, HourlyThroughput } from "@/types";
 import {
   BarChart3,
   TrendingUp,
   Clock,
   CheckCircle2,
   AlertTriangle,
-  Users,
-  Activity,
-  Calendar,
-  Building2,
   Stethoscope,
-  ArrowUpRight,
-  ShieldAlert,
+  Activity,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export default function AdminAnalyticsPage() {
-  const [timeRange, setTimeRange] = useState<"today" | "week" | "month">("today");
-  const stats = analyticsService.getClinicAnalytics();
-  const departments = analyticsService.getDepartmentStats();
+  const [stats, setStats] = useState<ClinicAnalytics | null>(null);
+  const [departments, setDepartments] = useState<DepartmentStats[]>([]);
+  const [hourlyData, setHourlyData] = useState<HourlyThroughput[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const hourlyData = [
-    { hour: "08:00", arrivals: 6, completed: 4 },
-    { hour: "09:00", arrivals: 12, completed: 8 },
-    { hour: "10:00", arrivals: 18, completed: 14 },
-    { hour: "11:00", arrivals: 15, completed: 13 },
-    { hour: "12:00", arrivals: 8, completed: 9 },
-    { hour: "13:00", arrivals: 5, completed: 6 },
-    { hour: "14:00", arrivals: 11, completed: 10 },
-    { hour: "15:00", arrivals: 9, completed: 8 },
-    { hour: "16:00", arrivals: 4, completed: 5 },
-  ];
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await analyticsService.getOverview();
+      setStats(data.analytics);
+      setDepartments(data.departments);
+      setHourlyData(data.hourlyFlow);
+    } catch (err: any) {
+      setError(err.message || "Failed to load operational analytics.");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  const maxHourly = Math.max(...hourlyData.map((h) => Math.max(h.arrivals, h.completed)));
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[360px] space-y-3">
+        <RefreshCw size={24} className="text-sky-600 animate-spin" />
+        <p className="text-sm font-medium text-slate-500">Loading operational analytics...</p>
+      </div>
+    );
+  }
+
+  if (error || !stats) {
+    return (
+      <div className="p-6 rounded-2xl bg-white border border-rose-200 shadow-xs space-y-4 max-w-lg mx-auto text-center mt-12">
+        <div className="w-12 h-12 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+          <AlertTriangle size={24} />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-lg font-bold text-slate-900">Analytics Unavailable</h2>
+          <p className="text-xs text-slate-500">{error || "Could not retrieve clinic metrics from backend."}</p>
+        </div>
+        <Button onClick={loadData} size="sm" className="gap-2 mx-auto">
+          <RefreshCw size={14} />
+          Retry Request
+        </Button>
+      </div>
+    );
+  }
+
+  const maxHourly = Math.max(
+    1,
+    ...hourlyData.map((h) => Math.max(h.arrivals, h.completed))
+  );
+
+  const totalHourlyActivity = hourlyData.reduce(
+    (acc, curr) => acc + curr.arrivals + curr.completed,
+    0
+  );
 
   return (
     <div className="space-y-6">
@@ -54,23 +96,15 @@ export default function AdminAnalyticsPage() {
           </p>
         </div>
 
-        {/* Time Filter */}
-        <div className="flex items-center bg-slate-200/80 p-1 rounded-xl text-xs font-medium">
-          {(["today", "week", "month"] as const).map((range) => (
-            <button
-              key={range}
-              onClick={() => setTimeRange(range)}
-              className={cn(
-                "px-3 py-1.5 rounded-lg capitalize transition-all",
-                timeRange === range
-                  ? "bg-white text-slate-900 shadow-xs font-semibold"
-                  : "text-slate-600 hover:text-slate-900"
-              )}
-            >
-              {range === "today" ? "Today" : range === "week" ? "Past 7 Days" : "Past 30 Days"}
-            </button>
-          ))}
-        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={loadData}
+          className="gap-2 self-start md:self-auto text-xs"
+        >
+          <RefreshCw size={13} />
+          Refresh Metrics
+        </Button>
       </div>
 
       {/* KPI Cards Grid */}
@@ -89,9 +123,8 @@ export default function AdminAnalyticsPage() {
             <span className="text-3xl font-bold text-slate-900">{stats.meanWaitMinutes}</span>
             <span className="text-sm font-semibold text-slate-500">min</span>
           </div>
-          <div className="mt-2 flex items-center gap-1.5 text-xs text-emerald-700">
-            <ArrowUpRight size={13} className="rotate-45" />
-            <span>4 min faster than last week</span>
+          <div className="mt-2 text-xs text-slate-500">
+            Calculated from today's live patient encounters
           </div>
         </div>
 
@@ -110,7 +143,7 @@ export default function AdminAnalyticsPage() {
             <span className="text-sm font-semibold text-slate-500">min</span>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            90% of patients seen within 38 min (SLA: 45m)
+            90% of patients seen within {stats.p90WaitMinutes} min (SLA: 45m)
           </p>
         </div>
 
@@ -128,7 +161,7 @@ export default function AdminAnalyticsPage() {
             <span className="text-3xl font-bold text-slate-900">{stats.doctorUtilizationRate}%</span>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Optimal workload range (80% - 90%)
+            Active encounters relative to physician capacity
           </p>
         </div>
 
@@ -146,7 +179,7 @@ export default function AdminAnalyticsPage() {
             <span className="text-3xl font-bold text-emerald-700">{stats.punctualityRate}%</span>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            Within 10 min of scheduled slot
+            Within 15 min of scheduled booking slot
           </p>
         </div>
       </div>
@@ -158,10 +191,10 @@ export default function AdminAnalyticsPage() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="font-bold text-base text-slate-900">
-                Hourly Patient Intake vs Consultations
+                Hourly Patient Intake vs Consultations (Today)
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                Arrival peak between 09:00 - 11:00 AM managed with staggered consultations.
+                Real arrivals vs completed consultations across active clinic hours.
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs font-medium">
@@ -176,35 +209,46 @@ export default function AdminAnalyticsPage() {
             </div>
           </div>
 
-          <div className="h-64 flex items-end justify-between gap-3 pt-6 pb-2 border-b border-slate-100">
-            {hourlyData.map((item) => {
-              const arrivalHeight = Math.round((item.arrivals / maxHourly) * 100);
-              const completedHeight = Math.round((item.completed / maxHourly) * 100);
-              return (
-                <div key={item.hour} className="flex-1 flex flex-col items-center gap-1">
-                  <div className="w-full flex items-end justify-center gap-1 h-48">
-                    <div
-                      style={{ height: `${arrivalHeight}%` }}
-                      className="w-3 sm:w-5 bg-sky-500 rounded-t transition-all"
-                      title={`${item.hour}: ${item.arrivals} Arrivals`}
-                    />
-                    <div
-                      style={{ height: `${completedHeight}%` }}
-                      className="w-3 sm:w-5 bg-emerald-500 rounded-t transition-all"
-                      title={`${item.hour}: ${item.completed} Completed`}
-                    />
+          {totalHourlyActivity === 0 ? (
+            <div className="h-56 flex flex-col items-center justify-center border border-dashed border-slate-200 rounded-lg text-slate-400 text-xs">
+              <BarChart3 size={24} className="mb-2 text-slate-300" />
+              <span>No patient check-ins or completed encounters recorded today yet.</span>
+            </div>
+          ) : (
+            <div className="h-64 flex items-end justify-between gap-3 pt-6 pb-2 border-b border-slate-100">
+              {hourlyData.map((item) => {
+                const arrivalHeight = Math.round((item.arrivals / maxHourly) * 100);
+                const completedHeight = Math.round((item.completed / maxHourly) * 100);
+                return (
+                  <div key={item.hour} className="flex-1 flex flex-col items-center gap-1">
+                    <div className="w-full flex items-end justify-center gap-1 h-48">
+                      <div
+                        style={{ height: `${Math.max(4, arrivalHeight)}%` }}
+                        className={`w-3 sm:w-5 rounded-t transition-all ${
+                          item.arrivals > 0 ? "bg-sky-500" : "bg-slate-100"
+                        }`}
+                        title={`${item.hour}: ${item.arrivals} Arrivals`}
+                      />
+                      <div
+                        style={{ height: `${Math.max(4, completedHeight)}%` }}
+                        className={`w-3 sm:w-5 rounded-t transition-all ${
+                          item.completed > 0 ? "bg-emerald-500" : "bg-slate-100"
+                        }`}
+                        title={`${item.hour}: ${item.completed} Completed`}
+                      />
+                    </div>
+                    <span className="text-[10px] font-mono text-slate-400 mt-2">
+                      {item.hour.slice(0, 2)}h
+                    </span>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400 mt-2">
-                    {item.hour.slice(0, 2)}h
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="mt-4 flex items-center justify-between text-xs text-slate-500">
-            <span>Peak queue surge: 10:15 AM (18 active tokens)</span>
-            <span className="font-medium text-slate-700">Throughput velocity: 11.2 pt/hr</span>
+            <span>Active queue: {stats.activeQueueCount} patients waiting</span>
+            <span className="font-medium text-slate-700">Completed today: {stats.completedToday}</span>
           </div>
         </div>
 
@@ -222,51 +266,52 @@ export default function AdminAnalyticsPage() {
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold">
                   <span className="text-slate-700">Urgent Case Delay Rate</span>
-                  <span className="text-emerald-700 font-bold">{stats.urgentDelayRate}% (Target &lt; 5%)</span>
+                  <span
+                    className={cn(
+                      "font-bold",
+                      stats.urgentDelayRate <= 5.0 ? "text-emerald-700" : "text-amber-700"
+                    )}
+                  >
+                    {stats.urgentDelayRate}% (Target &lt; 5%)
+                  </span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-2 mt-1.5 overflow-hidden">
                   <div
-                    className="bg-emerald-500 h-2 rounded-full"
-                    style={{ width: `${stats.urgentDelayRate * 10}%` }}
+                    className={cn(
+                      "h-2 rounded-full",
+                      stats.urgentDelayRate <= 5.0 ? "bg-emerald-500" : "bg-amber-500"
+                    )}
+                    style={{ width: `${Math.min(100, stats.urgentDelayRate * 10)}%` }}
                   />
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Triage urgency level 2 cases routed to consultation within 15 min.
+                  Urgent and emergency cases called within 15 min threshold.
                 </p>
               </div>
 
               <div className="pt-2 border-t border-slate-100">
                 <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-700">SLA Wait Compliance</span>
-                  <span className="text-sky-700 font-bold">94.8% (Target &gt; 90%)</span>
+                  <span className="text-slate-700">Punctuality Compliance</span>
+                  <span className="text-sky-700 font-bold">{stats.punctualityRate}% (Target &gt; 90%)</span>
                 </div>
                 <div className="w-full bg-slate-100 rounded-full h-2 mt-1.5 overflow-hidden">
-                  <div className="bg-sky-500 h-2 rounded-full" style={{ width: "94.8%" }} />
+                  <div
+                    className="bg-sky-500 h-2 rounded-full"
+                    style={{ width: `${Math.min(100, stats.punctualityRate)}%` }}
+                  />
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1">
-                  Patients called within their maximum initial uncertainty range estimate.
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span className="text-slate-700">Fact Confirmation Completion</span>
-                  <span className="text-indigo-700 font-bold">98.1%</span>
-                </div>
-                <div className="w-full bg-slate-100 rounded-full h-2 mt-1.5 overflow-hidden">
-                  <div className="bg-indigo-500 h-2 rounded-full" style={{ width: "98.1%" }} />
-                </div>
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Intake fact sheets verified before doctor room entry.
+                  Appointments checked in on schedule.
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="mt-6 p-3 bg-sky-50/70 border border-sky-200/80 rounded-lg text-xs text-sky-900 flex items-start gap-2">
+          <div className="mt-6 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 flex items-start gap-2">
             <Activity size={15} className="text-sky-600 shrink-0 mt-0.5" />
             <span>
-              <strong>Shift Recommendation:</strong> Consider adding 1 provider to Cardiovascular intake between 11:00 AM - 01:00 PM to mitigate ECG room backlog.
+              <strong>Operations Status:</strong> Total of {stats.totalPatientsToday} patient
+              {stats.totalPatientsToday === 1 ? "" : "s"} scheduled or checked in today across all active wings.
             </span>
           </div>
         </div>

@@ -262,3 +262,98 @@ def test_queue_and_consultation_lifecycle_and_security(
     # Cannot call a NO_SHOW entry
     res_call_noshow = client.post(f"/api/v1/queues/{q_entry2.id}/call", headers=doctor_headers)
     assert res_call_noshow.status_code == 400
+
+    # Test Case 15: Doctor 1 can check in their assigned patient
+    appt3 = Appointment(
+        patient_id=pat1.id,
+        doctor_id=doc1.id,
+        hospital_id=hosp.id,
+        appointment_date=today,
+        scheduled_start=datetime.time(11, 0),
+        scheduled_end=datetime.time(11, 30),
+        status=AppointmentStatus.BOOKED,
+        reason="Prescription renewal",
+    )
+    db_session.add(appt3)
+    db_session.commit()
+    db_session.refresh(appt3)
+
+    # Doctor 2 CANNOT check in Doctor 1's appointment
+    res_doc2_checkin = client.post(f"/api/v1/appointments/{appt3.id}/check-in", headers=doc2_headers)
+    assert res_doc2_checkin.status_code == 403
+    assert "another doctor" in res_doc2_checkin.text.lower() or "not_assigned_doctor" in res_doc2_checkin.text.lower()
+
+    # Doctor 1 CAN check in their patient
+    res_doc1_checkin = client.post(f"/api/v1/appointments/{appt3.id}/check-in", headers=doctor_headers)
+    assert res_doc1_checkin.status_code == 201
+    q_entry3_data = res_doc1_checkin.json()
+    assert q_entry3_data["status"] == "WAITING"
+    assert q_entry3_data["token_number"] == "A03"
+
+    # Verify Appointment lists include patient_name
+    res_appts = client.get("/api/v1/appointments", headers=doctor_headers)
+    assert res_appts.status_code == 200
+    appts_data = res_appts.json()
+    assert any(a["patient_name"] == "Arthur Dent" for a in appts_data)
+
+    # Call and start consultation for entry 3
+    client.post(f"/api/v1/queues/{q_entry3_data['id']}/call", headers=doctor_headers)
+    res_start3 = client.post(f"/api/v1/queues/{q_entry3_data['id']}/start", headers=doctor_headers)
+    assert res_start3.status_code == 200
+    consult3_id = res_start3.json()["id"]
+
+    # Test Case 16: Resuming in-progress consultation is idempotent
+    res_resume = client.post(f"/api/v1/queues/{q_entry3_data['id']}/start", headers=doctor_headers)
+    assert res_resume.status_code == 200
+    assert res_resume.json()["id"] == consult3_id
+
+    # Test Case 17: Save clinical notes, diagnosis, prescriptions to backend
+    notes_payload = {
+        "clinical_notes": "Patient reports mild fatigue. Vitals normal. BP 120/80.",
+        "diagnosis": "Mild viral rhinitis",
+        "prescriptions": "Rest, hydration, cetirizine 10mg PRN",
+        "follow_up_instructions": "Return in 7 days if symptoms persist",
+    }
+    res_save_notes = client.put(
+        f"/api/v1/queues/consultation/{consult3_id}/notes",
+        headers=doctor_headers,
+        json=notes_payload,
+    )
+    assert res_save_notes.status_code == 200
+    saved_data = res_save_notes.json()
+    assert saved_data["clinical_notes"] == notes_payload["clinical_notes"]
+    assert saved_data["diagnosis"] == notes_payload["diagnosis"]
+    assert saved_data["prescriptions"] == notes_payload["prescriptions"]
+    assert saved_data["follow_up_instructions"] == notes_payload["follow_up_instructions"]
+
+    # Test Case 18: Doctor 2 cannot update Doctor 1's consultation notes
+    res_doc2_notes = client.put(
+        f"/api/v1/queues/consultation/{consult3_id}/notes",
+        headers=doc2_headers,
+        json={"clinical_notes": "Tampered note"},
+    )
+    assert res_doc2_notes.status_code == 403
+
+    # Test Case 19: Complete consultation with updated final notes
+    complete_payload = {
+        "clinical_notes": "Patient reports mild fatigue. Vitals normal. BP 120/80. Final review complete.",
+        "diagnosis": "Mild viral rhinitis (resolved)",
+    }
+    res_complete3 = client.post(
+        f"/api/v1/queues/{q_entry3_data['id']}/complete",
+        headers=doctor_headers,
+        json=complete_payload,
+    )
+    assert res_complete3.status_code == 200
+    assert res_complete3.json()["status"] == "COMPLETED"
+    assert res_complete3.json()["clinical_notes"] == complete_payload["clinical_notes"]
+    assert res_complete3.json()["diagnosis"] == complete_payload["diagnosis"]
+
+    # Consultation notes cannot be updated after completion
+    res_post_complete_update = client.put(
+        f"/api/v1/queues/consultation/{consult3_id}/notes",
+        headers=doctor_headers,
+        json={"clinical_notes": "Late edit"},
+    )
+    assert res_post_complete_update.status_code == 400
+

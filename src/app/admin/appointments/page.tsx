@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { appointmentService } from "@/services/appointments";
-import { queueService } from "@/services/queue";
-import { Appointment, AppointmentStatus } from "@/types";
+import { Appointment } from "@/types";
 import {
   Calendar,
   Search,
@@ -15,61 +14,76 @@ import {
   AlertCircle,
   Building2,
   Plus,
+  RefreshCw,
 } from "lucide-react";
 import { AppointmentStatusBadge } from "@/components/common/StatusBadge";
 import { cn } from "@/lib/utils";
 
 export default function AdminAppointmentsPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
+  const fetchAppointments = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await appointmentService.getAllAppointments();
+      setAppointments(data);
+    } catch (err: any) {
+      console.error("Failed to load appointments:", err);
+      setError(err?.message || "Failed to load clinic appointments");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    appointmentService.getAllAppointments().then(setAppointments).catch(() => {});
+    fetchAppointments();
   }, []);
 
   const handleQuickCheckIn = async (apt: Appointment) => {
-    // 1. Update appointment status
-    await appointmentService.updateAppointmentStatus(apt.id, "checked_in");
-    // 2. Add to live queue
-    const urgency =
-      apt.triageUrgency === "emergency"
-        ? "emergency"
-        : apt.triageUrgency === "urgent"
-        ? "urgent"
-        : "routine";
-
-    queueService.checkInPatient(
-      apt.patientId,
-      apt.patientId === "pat_101" ? "Sarah Jenkins" : "Patient " + apt.id.slice(-4),
-      apt.doctorId,
-      apt.doctorName,
-      apt.reasonForVisit,
-      urgency
-    );
-
-    // Refresh state
-    const refreshed = await appointmentService.getAllAppointments();
-    setAppointments(refreshed);
-    setActionSuccessMessage(`Patient checked in & added to Dr. ${apt.doctorName}'s live queue!`);
-    setTimeout(() => setActionSuccessMessage(null), 4000);
+    try {
+      await appointmentService.checkInAppointment(apt.id);
+      const refreshed = await appointmentService.getAllAppointments();
+      setAppointments(refreshed);
+      setActionSuccessMessage(`Patient checked in & added to Dr. ${apt.doctorName}'s live queue!`);
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+    } catch (err: any) {
+      console.error("Check-in failed:", err);
+      setActionSuccessMessage(`Check-in failed: ${err?.message || "Please try again."}`);
+      setTimeout(() => setActionSuccessMessage(null), 5000);
+    }
   };
 
   const handleCancelAppointment = async (id: string) => {
-    await appointmentService.updateAppointmentStatus(id, "cancelled");
-    const refreshed = await appointmentService.getAllAppointments();
-    setAppointments(refreshed);
+    try {
+      await appointmentService.cancelAppointment(id);
+      const refreshed = await appointmentService.getAllAppointments();
+      setAppointments(refreshed);
+      setActionSuccessMessage("Appointment marked as cancelled.");
+      setTimeout(() => setActionSuccessMessage(null), 4000);
+    } catch (err: any) {
+      console.error("Cancellation failed:", err);
+      setActionSuccessMessage(`Cancellation failed: ${err?.message || "Please try again."}`);
+      setTimeout(() => setActionSuccessMessage(null), 5000);
+    }
   };
+
+  const todayIso = new Date().toISOString().slice(0, 10);
 
   const filteredAppointments = appointments.filter((apt) => {
     if (statusFilter !== "all" && apt.status !== statusFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchDoc = apt.doctorName.toLowerCase().includes(q);
+      const matchPatient = (apt.patientName || "").toLowerCase().includes(q);
       const matchReason = apt.reasonForVisit.toLowerCase().includes(q);
       const matchDept = apt.department.toLowerCase().includes(q);
-      if (!matchDoc && !matchReason && !matchDept) return false;
+      if (!matchDoc && !matchPatient && !matchReason && !matchDept) return false;
     }
     return true;
   });
@@ -90,6 +104,13 @@ export default function AdminAppointmentsPage() {
             Enterprise schedule audits, intake arrivals, and on-demand check-in synchronization.
           </p>
         </div>
+        <button
+          onClick={fetchAppointments}
+          className="inline-flex items-center self-start md:self-auto px-3 py-1.5 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 transition shadow-xs"
+        >
+          <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5 text-sky-600", loading && "animate-spin")} />
+          Refresh
+        </button>
       </div>
 
       {actionSuccessMessage && (
@@ -99,12 +120,27 @@ export default function AdminAppointmentsPage() {
         </div>
       )}
 
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={16} className="text-red-600 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={fetchAppointments}
+            className="text-xs font-semibold text-red-800 underline hover:no-underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Stats row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Today's Bookings</p>
           <p className="text-2xl font-bold text-slate-900 mt-1">
-            {appointments.filter((a) => a.date === "Today").length}
+            {appointments.filter((a) => a.appointmentDate === todayIso).length}
           </p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
@@ -120,7 +156,7 @@ export default function AdminAppointmentsPage() {
           </p>
         </div>
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Completed Today</p>
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Completed</p>
           <p className="text-2xl font-bold text-emerald-600 mt-1">
             {appointments.filter((a) => a.status === "completed").length}
           </p>
@@ -138,7 +174,7 @@ export default function AdminAppointmentsPage() {
             />
             <input
               type="text"
-              placeholder="Search doctor, symptom, department..."
+              placeholder="Search patient, doctor, department, symptom..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-900 placeholder-slate-400 focus:outline-hidden focus:ring-2 focus:ring-sky-500 w-64 md:w-80"
@@ -174,7 +210,7 @@ export default function AdminAppointmentsPage() {
           <table className="w-full text-left text-xs text-slate-600">
             <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200/80 uppercase text-[10px] tracking-wider">
               <tr>
-                <th className="py-3 px-4">Appointment ID</th>
+                <th className="py-3 px-4">Patient / ID</th>
                 <th className="py-3 px-4">Date & Slot</th>
                 <th className="py-3 px-4">Doctor & Department</th>
                 <th className="py-3 px-4">Chief Concern</th>
@@ -183,7 +219,14 @@ export default function AdminAppointmentsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredAppointments.length === 0 ? (
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="py-12 text-center text-slate-400">
+                    <RefreshCw className="h-6 w-6 text-sky-600 animate-spin mx-auto mb-2" />
+                    <p className="text-xs">Loading appointment records...</p>
+                  </td>
+                </tr>
+              ) : filteredAppointments.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-400">
                     <p className="text-sm font-medium">No appointments match your filters.</p>
@@ -192,8 +235,13 @@ export default function AdminAppointmentsPage() {
               ) : (
                 filteredAppointments.map((apt) => (
                   <tr key={apt.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-medium text-slate-700">
-                      {apt.id}
+                    <td className="py-3.5 px-4 font-medium text-slate-700">
+                      <p className="font-semibold text-slate-900">
+                        {apt.patientName || `Patient (${apt.patientId.slice(0, 8)})`}
+                      </p>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {apt.id.slice(0, 8)}
+                      </span>
                     </td>
 
                     <td className="py-3.5 px-4">

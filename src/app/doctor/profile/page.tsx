@@ -195,7 +195,7 @@ export default function DoctorProfilePage() {
                 Intake Status: {isAvailable ? "Accepting Patients" : "Station Paused"}
               </span>
               <span className="text-slate-500">
-                Controls whether CareRoute-X routes new triage recommendations to your schedule.
+                Controls whether MediLink routes new triage recommendations to your schedule.
               </span>
             </div>
             <Button
@@ -241,7 +241,7 @@ export default function DoctorProfilePage() {
             <div>
               <strong className="block text-slate-900">Medical Registration & License</strong>
               <span>
-                License #{doctor?.license_number || "Verified"} · {doctor?.hospital?.name || "CareRoute-X Affiliated"}
+                License #{doctor?.license_number || "Verified"} · {doctor?.hospital?.name || "MediLink Affiliated"}
               </span>
             </div>
           </div>

@@ -35,7 +35,7 @@ export default function PatientLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, isLoading, logout, loginAsRole } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -86,7 +86,7 @@ export default function PatientLayout({
               </div>
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-sky-600 block">
-                  CareRoute-X
+                  MediLink
                 </span>
                 <span className="text-base font-bold text-slate-900 tracking-tight">
                   Patient Portal
@@ -153,16 +153,7 @@ export default function PatientLayout({
               </p>
             </div>
 
-            <div className="pt-2 flex items-center justify-between text-xs text-slate-500">
-              {process.env.NODE_ENV === "development" && (
-                <button
-                  onClick={() => loginAsRole("doctor")}
-                  className="hover:text-slate-900 hover:underline flex items-center gap-1"
-                >
-                  <Stethoscope size={13} />
-                  Doctor View
-                </button>
-              )}
+            <div className="pt-2 flex items-center justify-end text-xs text-slate-500">
               <button
                 onClick={logout}
                 className="text-rose-600 hover:underline flex items-center gap-1"
@@ -185,7 +176,7 @@ export default function PatientLayout({
             </div>
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-sky-600 block leading-none">
-                CareRoute-X
+                MediLink
               </span>
               <span className="text-sm font-bold text-slate-900">
                 Patient Care
@@ -194,7 +185,7 @@ export default function PatientLayout({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[11px] bg-slate-100 px-2 py-0.5 rounded-md font-mono text-slate-600">
-              CRX-9281
+              {user?.id ? user.id.slice(0, 8) : "Patient"}
             </span>
             <button
               onClick={logout}

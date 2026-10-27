@@ -46,6 +46,8 @@ export interface BackendAppointmentResponse {
   doctor_specialty?: string | null;
   department_name?: string | null;
   queue_token?: string | null;
+  patient_name?: string | null;
+  queue_entry_id?: string | null;
 }
 
 export interface QueueEntryResponse {
@@ -183,6 +185,7 @@ export function mapBackendAppointmentToFrontend(
   return {
     id: backendAppt.id,
     patientId: backendAppt.patient_id,
+    patientName: backendAppt.patient_name || undefined,
     doctorId: backendAppt.doctor_id,
     doctorName: backendAppt.doctor_name || `Doctor (${backendAppt.doctor_id.slice(0, 8)})`,
     doctorSpecialty: backendAppt.doctor_specialty || "Outpatient Specialist",
@@ -193,6 +196,7 @@ export function mapBackendAppointmentToFrontend(
     reasonForVisit: backendAppt.reason || "Outpatient Consultation",
     createdAt: backendAppt.created_at,
     queueToken: backendAppt.queue_token || undefined,
+    queueEntryId: backendAppt.queue_entry_id || undefined,
     hospitalId: backendAppt.hospital_id,
     scheduledStart: backendAppt.scheduled_start,
     scheduledEnd: backendAppt.scheduled_end,

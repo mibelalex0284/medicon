@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { User, UserRole, PatientProfile } from "@/types";
+import { User, UserRole } from "@/types";
 import { authService } from "@/services/auth";
 import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -9,7 +9,6 @@ import { useRouter } from "next/navigation";
 interface AuthContextType {
   user: User | null;
   role: UserRole | null;
-  patientProfile: PatientProfile;
   loginWithCredentials: (email: string, password: string) => Promise<User>;
   registerPatient: (payload: {
     full_name: string;
@@ -27,7 +26,6 @@ interface AuthContextType {
     emergency_contact?: string;
     preferred_language?: string;
   }) => Promise<User>;
-  loginAsRole: (role: UserRole) => void;
   logout: () => Promise<void>;
   isLoading: boolean;
   refreshSession: () => Promise<User | null>;
@@ -79,6 +77,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null);
           localStorage.removeItem("careroute_auth_token");
         } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          // If loginWithCredentials is currently executing, do not trigger a competing restoreSession
+          if (authService.getIsLoggingIn()) {
+            return;
+          }
           if (session?.access_token) {
             localStorage.setItem("careroute_auth_token", session.access_token);
             try {
@@ -184,15 +186,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginAsRole = (newRole: UserRole) => {
-    const loggedIn = authService.loginAsRole(newRole);
-    setUser(loggedIn);
-    if (newRole === "patient") router.push("/patient/dashboard");
-    else if (newRole === "doctor") router.push("/doctor/dashboard");
-    else if (newRole === "admin") router.push("/admin/dashboard");
-    else if (newRole === "unregistered") router.push("/account-setup");
-  };
-
   const logout = async () => {
     await authService.logout();
     setUser(null);
@@ -205,11 +198,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         role: user ? user.role : null,
-        patientProfile: authService.getPatientProfile(),
         loginWithCredentials,
         registerPatient,
         completePatientProfile,
-        loginAsRole,
         logout,
         isLoading,
         refreshSession,

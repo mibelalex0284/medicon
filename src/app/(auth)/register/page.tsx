@@ -133,7 +133,7 @@ export default function RegisterPage() {
               </div>
               <div>
                 <span className="text-xs font-bold uppercase tracking-widest text-amber-400">
-                  CareRoute-X Security Policy
+                  MediLink Security Policy
                 </span>
                 <h1 className="text-xl font-bold text-white tracking-tight">
                   Registration Unavailable
@@ -172,7 +172,7 @@ export default function RegisterPage() {
 
           <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-center">
             <p className="text-[11px] text-slate-400">
-              CareRoute-X Outpatient Care Navigation · HIPAA/GDPR Compliant
+              MediLink Outpatient Care Navigation · HIPAA/GDPR Compliant
             </p>
           </div>
         </div>
@@ -196,7 +196,7 @@ export default function RegisterPage() {
               </div>
               <div>
                 <span className="text-xs font-bold uppercase tracking-widest text-sky-400">
-                  CareRoute-X
+                  MediLink
                 </span>
                 <h1 className="text-xl font-bold text-white tracking-tight">
                   Create Patient Account
@@ -398,7 +398,7 @@ export default function RegisterPage() {
 
         <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-center">
           <p className="text-[11px] text-slate-400">
-            CareRoute-X Outpatient Care Navigation · Protected Health Information (PHI) Secure
+            MediLink Outpatient Care Navigation · Protected Health Information (PHI) Secure
           </p>
         </div>
       </div>

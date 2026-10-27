@@ -100,3 +100,16 @@ class Appointment(Base, TimestampMixin):
         if self.queue_entry:
             return self.queue_entry.token_number
         return None
+
+    @property
+    def patient_name(self) -> Optional[str]:
+        if self.patient and self.patient.profile:
+            return self.patient.profile.full_name
+        return None
+
+    @property
+    def queue_entry_id(self) -> Optional[str]:
+        if self.queue_entry:
+            return self.queue_entry.id
+        return None
+

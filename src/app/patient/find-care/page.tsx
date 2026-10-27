@@ -150,7 +150,7 @@ export default function FindCarePage() {
       <div className="rounded-xl bg-slate-100/70 p-3.5 border border-slate-200/80 flex items-start gap-3 text-xs text-slate-600">
         <HelpCircle size={16} className="text-slate-400 shrink-0 mt-0.5" />
         <p>
-          CareRoute-X is designed for outpatient clinic navigation. If you are
+          MediLink is designed for outpatient clinic navigation. If you are
           experiencing sudden crushing chest pain, paralysis, or severe respiratory distress,
           please proceed directly to an emergency department or call emergency services.
         </p>

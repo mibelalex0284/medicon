@@ -69,9 +69,11 @@ def decode_jwt_token(
             "verify_aud": bool(settings.SUPABASE_JWT_AUDIENCE),
             "verify_exp": True,
         }
+        leeway = getattr(settings, "JWT_LEEWAY_SECONDS", 60)
         decode_kwargs: Dict[str, Any] = {
             "algorithms": [alg],
             "options": decode_options,
+            "leeway": leeway,
         }
         if settings.SUPABASE_JWT_AUDIENCE:
             decode_kwargs["audience"] = settings.SUPABASE_JWT_AUDIENCE
@@ -83,6 +85,9 @@ def decode_jwt_token(
                 key = "dev-insecure-test-signing-secret-32bytes-min"
 
             if not key or (settings.ENVIRONMENT.lower() == "production" and "placeholder" in key):
+                logger.warning(
+                    "JWT verification rejected: Legacy HS256 secret is not configured in production."
+                )
                 raise UnauthorizedError(
                     message="Legacy HS256 token verification is not configured or disabled in production",
                     code="LEGACY_SECRET_NOT_CONFIGURED",
@@ -109,20 +114,33 @@ def decode_jwt_token(
                     **decode_kwargs,
                 )
             else:
+                logger.warning(
+                    f"JWT verification rejected: JWKS URL is not configured for {alg} verification."
+                )
                 raise UnauthorizedError(
-                    message="Supabase JWKS URL is not configured for ES256 verification",
+                    message=f"Supabase JWKS URL is not configured for {alg} verification",
                     code="JWKS_NOT_CONFIGURED",
                 )
 
-        # Enforce required expiration claim
+        # Enforce required expiration claim and reject expired tokens
         if "exp" not in payload:
+            logger.warning("JWT verification rejected: Token missing required 'exp' claim.")
             raise UnauthorizedError(
                 message="Token does not contain an expiration claim",
                 code="TOKEN_MISSING_EXP",
             )
 
+        now_ts = datetime.now(timezone.utc).timestamp()
+        if payload["exp"] <= now_ts:
+            logger.warning("JWT verification rejected: Token signature has expired (TOKEN_EXPIRED).")
+            raise UnauthorizedError(
+                message="Authentication token has expired",
+                code="TOKEN_EXPIRED",
+            )
+
         # Enforce required subject claim
         if not payload.get("sub"):
+            logger.warning("JWT verification rejected: Token missing required 'sub' claim.")
             raise UnauthorizedError(
                 message="Token does not contain a valid subject claim",
                 code="INVALID_TOKEN_CLAIMS",
@@ -133,11 +151,15 @@ def decode_jwt_token(
             expected_issuer = f"{settings.SUPABASE_URL.rstrip('/')}/auth/v1"
             token_issuer = payload.get("iss")
             if not token_issuer:
+                logger.warning("JWT verification rejected: Token missing required 'iss' claim.")
                 raise UnauthorizedError(
                     message="Token does not contain an issuer claim",
                     code="MISSING_TOKEN_ISSUER",
                 )
             if token_issuer.rstrip('/') != expected_issuer.rstrip('/'):
+                logger.warning(
+                    f"JWT verification rejected: Token issuer '{token_issuer}' does not match expected '{expected_issuer}'."
+                )
                 raise UnauthorizedError(
                     message="Token issuer does not match configured Supabase project",
                     code="INVALID_TOKEN_ISSUER",
@@ -145,12 +167,18 @@ def decode_jwt_token(
 
         return payload
     except jwt.ExpiredSignatureError:
+        logger.warning("JWT verification rejected: Token signature has expired (TOKEN_EXPIRED).")
         raise UnauthorizedError(message="Authentication token has expired", code="TOKEN_EXPIRED")
+    except jwt.ImmatureSignatureError as err:
+        logger.warning(f"JWT verification rejected: Token not yet valid due to clock skew: {str(err)}.")
+        raise UnauthorizedError(message=f"Authentication token is not yet valid: {str(err)}", code="TOKEN_NOT_YET_VALID")
     except UnauthorizedError:
         raise
     except jwt.PyJWKClientError as err:
+        logger.warning(f"JWT verification rejected against JWKS: {type(err).__name__} - {str(err)}.")
         raise UnauthorizedError(message=f"Unable to verify token against Supabase JWKS: {str(err)}", code="JWKS_VERIFICATION_FAILED")
     except jwt.InvalidTokenError as err:
+        logger.warning(f"JWT verification rejected: Invalid token: {type(err).__name__} - {str(err)}.")
         raise UnauthorizedError(message=f"Invalid authentication token: {str(err)}", code="INVALID_TOKEN")
 
 

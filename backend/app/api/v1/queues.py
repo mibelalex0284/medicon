@@ -6,7 +6,7 @@ from app.core.exceptions import ForbiddenError
 from app.db.session import get_db
 from app.models.doctor import Doctor
 from app.models.profile import Profile
-from app.schemas.consultation import ConsultationResponse
+from app.schemas.consultation import ConsultationNotesUpdate, ConsultationResponse
 from app.schemas.queue_entry import QueueEntryResponse
 from app.services.consultation_service import consultation_service
 from app.services.queue_service import queue_service
@@ -58,6 +58,24 @@ def get_consultation_by_queue_entry(
     doc = _get_authenticated_doctor(db, current_user)
     return consultation_service.get_by_queue_entry(
         db, queue_entry_id, doctor_id=doc.id
+    )
+
+
+@router.put(
+    "/consultation/{consultation_id}/notes",
+    response_model=ConsultationResponse,
+    summary="Save Consultation Notes",
+    description="Persists clinical notes, diagnosis, and prescriptions for an active encounter.",
+)
+def update_consultation_notes(
+    consultation_id: str,
+    notes_in: ConsultationNotesUpdate,
+    db: Session = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(require_doctor),
+) -> ConsultationResponse:
+    doc = _get_authenticated_doctor(db, current_user)
+    return consultation_service.save_consultation_notes(
+        db, consultation_id, doctor_id=doc.id, notes_in=notes_in
     )
 
 
@@ -123,16 +141,17 @@ def start_consultation(
     "/{queue_entry_id}/complete",
     response_model=ConsultationResponse,
     summary="Complete Patient Consultation",
-    description="Atomically completes the Consultation, QueueEntry, and Appointment, tracking duration.",
+    description="Atomically completes the Consultation, QueueEntry, and Appointment, tracking duration and saving notes.",
 )
 def complete_consultation(
     queue_entry_id: str,
+    notes_in: Optional[ConsultationNotesUpdate] = None,
     db: Session = Depends(get_db),
     current_user: AuthenticatedUser = Depends(require_doctor),
 ) -> ConsultationResponse:
     doc = _get_authenticated_doctor(db, current_user)
     return consultation_service.complete_consultation(
-        db, queue_entry_id, doctor_id=doc.id
+        db, queue_entry_id, doctor_id=doc.id, notes_in=notes_in
     )
 
 

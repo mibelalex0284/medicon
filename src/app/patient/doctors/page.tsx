@@ -540,7 +540,7 @@ function DoctorMatchingContent() {
             ← Back to Triage Intake
           </Link>
           <span className="text-[11px] text-slate-400">
-            CareRoute-X Multi-Hospital Directory
+            MediLink Multi-Hospital Directory
           </span>
         </div>
       </div>

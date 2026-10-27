@@ -1,108 +1,94 @@
-import { ClinicAnalytics, DepartmentStats } from "@/types";
+import { ClinicAnalytics, DepartmentStats, HourlyThroughput } from "@/types";
+import { getAuthHeaders } from "@/services/doctors";
 
-export const CLINIC_DEPARTMENTS: DepartmentStats[] = [
-  {
-    id: "dep_adult_opd",
-    name: "Adult Outpatient & Internal Med",
-    activeDoctors: 4,
-    totalWaiting: 14,
-    meanWaitMinutes: 24,
-    p90WaitMinutes: 42,
-    urgentCasesCount: 2,
-    currentBottleneck: "Room 204 high complexity intake",
-  },
-  {
-    id: "dep_cardio",
-    name: "Cardiovascular Pavilion",
-    activeDoctors: 3,
-    totalWaiting: 9,
-    meanWaitMinutes: 32,
-    p90WaitMinutes: 55,
-    urgentCasesCount: 3,
-    currentBottleneck: "ECG diagnostic room throughput",
-  },
-  {
-    id: "dep_ortho",
-    name: "Musculoskeletal & Orthopedics",
-    activeDoctors: 2,
-    totalWaiting: 6,
-    meanWaitMinutes: 18,
-    p90WaitMinutes: 30,
-    urgentCasesCount: 0,
-  },
-  {
-    id: "dep_peds",
-    name: "Pediatrics & Adolescent Care",
-    activeDoctors: 3,
-    totalWaiting: 8,
-    meanWaitMinutes: 15,
-    p90WaitMinutes: 28,
-    urgentCasesCount: 1,
-  },
-];
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+export interface BackendDepartmentMetric {
+  id: string;
+  name: string;
+  code?: string | null;
+  active_doctors: number;
+  total_waiting: number;
+  mean_wait_minutes: number;
+  p90_wait_minutes: number;
+  urgent_cases_count: number;
+  current_bottleneck?: string | null;
+}
+
+export interface BackendHourlyMetric {
+  hour: string;
+  arrivals: number;
+  completed: number;
+}
+
+export interface BackendAdminAnalyticsOverviewResponse {
+  total_patients_today: number;
+  active_queue_count: number;
+  in_consultation_count: number;
+  completed_today: number;
+  mean_wait_minutes: number;
+  p90_wait_minutes: number;
+  urgent_delay_rate: number;
+  doctor_utilization_rate: number;
+  punctuality_rate: number;
+  departments: BackendDepartmentMetric[];
+  hourly_flow: BackendHourlyMetric[];
+}
+
+export interface AdminAnalyticsData {
+  analytics: ClinicAnalytics;
+  departments: DepartmentStats[];
+  hourlyFlow: HourlyThroughput[];
+}
 
 export class AnalyticsService {
-  getClinicAnalytics(): ClinicAnalytics {
-    return {
-      totalPatientsToday: 68,
-      activeQueueCount: 37,
-      inConsultationCount: 12,
-      completedToday: 19,
-      meanWaitMinutes: 22,
-      p90WaitMinutes: 38,
-      urgentDelayRate: 3.8, // 3.8%
-      doctorUtilizationRate: 88.5, // 88.5%
-      punctualityRate: 91.2, // 91.2%
+  async getOverview(): Promise<AdminAnalyticsData> {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${API_BASE_URL}/api/v1/admin/analytics/overview`, {
+      method: "GET",
+      headers,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || err.message || `Failed to fetch analytics (HTTP ${res.status})`);
+    }
+
+    const data: BackendAdminAnalyticsOverviewResponse = await res.json();
+
+    const analytics: ClinicAnalytics = {
+      totalPatientsToday: data.total_patients_today,
+      activeQueueCount: data.active_queue_count,
+      inConsultationCount: data.in_consultation_count,
+      completedToday: data.completed_today,
+      meanWaitMinutes: data.mean_wait_minutes,
+      p90WaitMinutes: data.p90_wait_minutes,
+      urgentDelayRate: data.urgent_delay_rate,
+      doctorUtilizationRate: data.doctor_utilization_rate,
+      punctualityRate: data.punctuality_rate,
     };
-  }
 
-  getDepartmentStats(): DepartmentStats[] {
-    return CLINIC_DEPARTMENTS;
-  }
+    const departments: DepartmentStats[] = (data.departments || []).map((d) => ({
+      id: d.id,
+      name: d.name,
+      activeDoctors: d.active_doctors,
+      totalWaiting: d.total_waiting,
+      meanWaitMinutes: d.mean_wait_minutes,
+      p90WaitMinutes: d.p90_wait_minutes,
+      urgentCasesCount: d.urgent_cases_count,
+      currentBottleneck: d.current_bottleneck || undefined,
+    }));
 
-  runSimulation(scenario: {
-    doctorCapacityChange: number; // e.g. -2, 0, +2
-    consultationDurationAvg: number; // e.g. 15
-    appointmentVolumeMultiplier: number; // e.g. 1.2
-  }): {
-    projectedMeanWait: number;
-    projectedP90Wait: number;
-    projectedUtilization: number;
-    projectedUrgentDelay: number;
-    riskAssessment: "low" | "moderate" | "critical";
-  } {
-    // Isolated queue simulation model
-    const baseWait = 22;
-    const baseP90 = 38;
+    const hourlyFlow: HourlyThroughput[] = (data.hourly_flow || []).map((h) => ({
+      hour: h.hour,
+      arrivals: h.arrivals,
+      completed: h.completed,
+    }));
 
-    const capacityFactor = 1 - scenario.doctorCapacityChange * 0.12;
-    const durationFactor = scenario.consultationDurationAvg / 15;
-    const volumeFactor = scenario.appointmentVolumeMultiplier;
-
-    const projectedMean = Math.round(baseWait * capacityFactor * durationFactor * volumeFactor);
-    const projectedP90 = Math.round(baseP90 * capacityFactor * durationFactor * volumeFactor);
-    const projectedUtilization = Math.min(
-      99,
-      Math.round(88 * durationFactor * (volumeFactor / Math.max(0.5, 1 + scenario.doctorCapacityChange * 0.1)))
-    );
-    const projectedUrgentDelay = +(
-      3.8 *
-      Math.max(0.6, volumeFactor * (durationFactor > 1.1 ? 1.4 : 1))
-    ).toFixed(1);
-
-    let risk: "low" | "moderate" | "critical" = "low";
-    if (projectedMean > 35 || projectedUtilization > 92) risk = "moderate";
-    if (projectedMean > 50 || projectedUtilization > 95 || projectedUrgentDelay > 8)
-      risk = "critical";
-
-    return {
-      projectedMeanWait: Math.max(8, projectedMean),
-      projectedP90Wait: Math.max(15, projectedP90),
-      projectedUtilization,
-      projectedUrgentDelay,
-      riskAssessment: risk,
-    };
+    return { analytics, departments, hourlyFlow };
   }
 }
 
 export const analyticsService = new AnalyticsService();
+

@@ -65,7 +65,7 @@ export default function RootPage() {
       <div className="flex flex-col items-center gap-3">
         <div className="h-9 w-9 animate-spin rounded-full border-3 border-sky-600 border-t-transparent" />
         <p className="text-xs text-slate-500 font-medium tracking-wide">
-          Connecting to CareRoute-X...
+          Connecting to MediLink...
         </p>
       </div>
     </div>
