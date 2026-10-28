@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "@/lib/supabase/client";
+import { getSupabaseClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { TriageUrgency, RedFlagAlert } from "@/types";
 
 export interface TriageSessionCreate {
@@ -99,27 +99,28 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 
   if (typeof window !== "undefined") {
-    // 1. Explicit token in localStorage / sessionStorage
-    const storedToken =
-      localStorage.getItem("careroute_auth_token") ||
-      sessionStorage.getItem("careroute_auth_token");
-    if (storedToken) {
-      headers["Authorization"] = `Bearer ${storedToken}`;
-      return headers;
-    }
-
-    // 2. Supabase auth token
+    // 1. Prioritize live Supabase session for guaranteed active, non-expired token
     try {
       const supabase = getSupabaseClient();
-      if (supabase) {
+      if (supabase && isSupabaseConfigured()) {
         const { data } = await supabase.auth.getSession();
         if (data?.session?.access_token) {
+          localStorage.setItem("careroute_auth_token", data.session.access_token);
           headers["Authorization"] = `Bearer ${data.session.access_token}`;
           return headers;
         }
       }
     } catch {
       // Supabase not configured or in fallback mode
+    }
+
+    // 2. Explicit token in localStorage / sessionStorage fallback
+    const storedToken =
+      localStorage.getItem("careroute_auth_token") ||
+      sessionStorage.getItem("careroute_auth_token");
+    if (storedToken) {
+      headers["Authorization"] = `Bearer ${storedToken}`;
+      return headers;
     }
   }
 

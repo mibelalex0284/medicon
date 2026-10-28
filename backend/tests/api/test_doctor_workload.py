@@ -65,8 +65,8 @@ def test_doctor_workload_metrics_and_isolation(
     auth_seeded_db: Session,
     doctor_headers: dict,
 ):
-    today = date.today()
     now_utc = datetime.now(timezone.utc)
+    today = now_utc.date()
 
     # 1. Setup Hospital
     hosp = Hospital(id="hosp-001", name="City Hospital", code="CH1", is_active=True)

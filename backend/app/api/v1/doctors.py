@@ -214,7 +214,7 @@ def get_current_doctor_workload(
             code="DOCTOR_RECORD_NOT_FOUND",
         )
 
-    today = datetime.date.today()
+    today = datetime.datetime.now(datetime.timezone.utc).date()
     today_start = datetime.datetime.combine(today, datetime.time.min, tzinfo=datetime.timezone.utc)
 
     # 1. Consultations completed today

@@ -91,8 +91,19 @@ def get_doctor_queue(
     current_user: AuthenticatedUser = Depends(require_doctor),
 ) -> List[QueueEntryResponse]:
     if doctor_id == "me":
-        doc = _get_authenticated_doctor(db, current_user)
-        target_doctor_id = doc.id
+        if current_user.is_admin:
+            doc = (
+                db.query(Doctor)
+                .join(Profile)
+                .filter(Profile.auth_user_id == current_user.id)
+                .first()
+            )
+            if not doc:
+                return []
+            target_doctor_id = doc.id
+        else:
+            doc = _get_authenticated_doctor(db, current_user)
+            target_doctor_id = doc.id
     else:
         if not current_user.is_admin:
             doc = _get_authenticated_doctor(db, current_user)

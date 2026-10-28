@@ -1,4 +1,4 @@
-import { User, UserRole, AuthoritativeRole } from "../../types";
+import type { User, UserRole, AuthoritativeRole } from "../../types";
 import { getSupabaseClient, isSupabaseConfigured } from "../../lib/supabase/client";
 
 const AUTH_STORAGE_KEY = "careroute_user_session";
@@ -430,7 +430,7 @@ export class AuthService {
       );
     }
 
-    const token = typeof window !== "undefined" ? localStorage.getItem("careroute_auth_token") : null;
+    const token = await this.getAuthToken();
     if (!token) {
       throw new Error("Authentication token missing. Please sign in again.");
     }
@@ -456,7 +456,7 @@ export class AuthService {
       if (code === "REGISTRATION_DISABLED") {
         throw new Error("Public patient registration is currently disabled by clinic administration.");
       }
-      throw new Error(err.message || err.detail || "Failed to complete patient profile");
+      throw new Error(err.error?.message || err.message || err.detail || "Failed to complete patient profile");
     }
 
     return (await this.restoreSession()) || {
@@ -468,54 +468,94 @@ export class AuthService {
     };
   }
 
-  async getAdminSettings(): Promise<{
+  async getAuthToken(explicitToken?: string | null): Promise<string | null> {
+    if (explicitToken) return explicitToken;
+
+    // 1. Authoritative Supabase session: query live Supabase client for current (auto-refreshed) access token
+    const supabase = getSupabaseClient();
+    if (supabase && isSupabaseConfigured()) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session?.access_token) {
+          if (typeof localStorage !== "undefined") {
+            localStorage.setItem("careroute_auth_token", data.session.access_token);
+          }
+          return data.session.access_token;
+        }
+      } catch {
+        // Fall back to storage if getSession fails
+      }
+    }
+
+    // 2. Fall back to local / session storage
+    if (typeof localStorage !== "undefined") {
+      const token = localStorage.getItem("careroute_auth_token");
+      if (token) return token;
+    }
+    if (typeof sessionStorage !== "undefined") {
+      const token = sessionStorage.getItem("careroute_auth_token");
+      if (token) return token;
+    }
+    return null;
+  }
+
+  async getAdminSettings(adminToken?: string | null): Promise<{
     patient_self_registration_enabled: boolean;
     settings: Array<{ key: string; value: string; description?: string | null; updated_at?: string | null; updated_by?: string | null }>;
   }> {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const token = typeof window !== "undefined" ? localStorage.getItem("careroute_auth_token") : null;
+    const token = await this.getAuthToken(adminToken);
+    if (!token) {
+      throw new Error("Authentication token missing. Please sign in again.");
+    }
     const res = await fetch(`${apiUrl}/api/v1/admin/settings`, {
       headers: {
-        Authorization: `Bearer ${token || ""}`,
+        Authorization: `Bearer ${token}`,
       },
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.message || "Failed to load admin settings");
+      throw new Error(err.error?.message || err.detail || err.message || "Failed to load admin settings");
     }
     return res.json();
   }
 
-  async updatePatientSelfRegistration(enabled: boolean): Promise<{
+  async updatePatientSelfRegistration(enabled: boolean, adminToken?: string | null): Promise<{
     patient_self_registration_enabled: boolean;
     settings: Array<{ key: string; value: string; description?: string | null; updated_at?: string | null; updated_by?: string | null }>;
   }> {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const token = typeof window !== "undefined" ? localStorage.getItem("careroute_auth_token") : null;
+    const token = await this.getAuthToken(adminToken);
+    if (!token) {
+      throw new Error("Authentication token missing. Please sign in again.");
+    }
     const res = await fetch(`${apiUrl}/api/v1/admin/settings/patient-self-registration`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token || ""}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ enabled }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.message || "Failed to update registration setting");
+      throw new Error(err.error?.message || err.detail || err.message || "Failed to update registration setting");
     }
     return res.json();
   }
 
-  async adminRegisterPatient(payload: {
-    full_name: string;
-    email: string;
-    date_of_birth: string;
-    phone?: string | null;
-    emergency_contact?: string | null;
-    preferred_language?: string;
-    hospital_id?: string | null;
-  }): Promise<{
+  async adminRegisterPatient(
+    payload: {
+      full_name: string;
+      email: string;
+      date_of_birth: string;
+      phone?: string | null;
+      emergency_contact?: string | null;
+      preferred_language?: string;
+      hospital_id?: string | null;
+    },
+    adminToken?: string | null
+  ): Promise<{
     status: string;
     profile_id: string;
     auth_user_id: string;
@@ -527,36 +567,42 @@ export class AuthService {
     message: string;
   }> {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const token = typeof window !== "undefined" ? localStorage.getItem("careroute_auth_token") : null;
+    const token = await this.getAuthToken(adminToken);
+    if (!token) {
+      throw new Error("Authentication token missing. Please sign in again.");
+    }
     const res = await fetch(`${apiUrl}/api/v1/admin/patients/register`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token || ""}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.message || "Failed to register patient account");
+      throw new Error(err.error?.message || err.detail || err.message || "Failed to register patient account");
     }
     return res.json();
   }
 
-  async adminOnboardDoctor(payload: {
-    full_name: string;
-    email: string;
-    password: string;
-    license_number: string;
-    hospital_id: string;
-    department_id?: string | null;
-    specialty_ids?: string[];
-    primary_specialty_id?: string | null;
-    years_of_experience?: number;
-    consultation_mode?: string;
-    languages?: string;
-    phone?: string | null;
-  }): Promise<{
+  async adminOnboardDoctor(
+    payload: {
+      full_name: string;
+      email: string;
+      password?: string;
+      license_number: string;
+      hospital_id: string;
+      department_id?: string | null;
+      specialty_ids?: string[];
+      primary_specialty_id?: string | null;
+      years_of_experience?: number;
+      consultation_mode?: string;
+      languages?: string;
+      phone?: string | null;
+    },
+    adminToken?: string | null
+  ): Promise<{
     status: string;
     profile_id: string;
     auth_user_id: string;
@@ -570,18 +616,30 @@ export class AuthService {
     action_link?: string | null;
   }> {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const token = typeof window !== "undefined" ? localStorage.getItem("careroute_auth_token") : null;
+    const token = await this.getAuthToken(adminToken);
+    if (!token) {
+      throw new Error("Authentication token missing. Please sign in again.");
+    }
     const res = await fetch(`${apiUrl}/api/v1/admin/doctors/onboard`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token || ""}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || err.message || "Failed to onboard physician");
+      const message =
+        err.error?.message ||
+        err.detail ||
+        err.message ||
+        `Failed to onboard physician (HTTP ${res.status})`;
+      const errorObj = new Error(message);
+      if (err.error?.code || err.code) {
+        (errorObj as any).code = err.error?.code || err.code;
+      }
+      throw errorObj;
     }
     return res.json();
   }

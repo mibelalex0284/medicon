@@ -74,10 +74,7 @@ export default function LoginPage() {
                 </h1>
               </div>
             </div>
-            <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-slate-800 px-2.5 py-1 rounded-full text-slate-300 border border-slate-700">
-              <ShieldCheck size={13} className={isSupabaseLive ? "text-emerald-400" : "text-amber-400"} />
-              {isSupabaseLive ? "Supabase Auth" : "Auth Offline"}
-            </span>
+
           </div>
         </div>
 
@@ -188,7 +185,7 @@ export default function LoginPage() {
 
         <div className="bg-slate-50 px-6 py-3 border-t border-slate-200 text-center">
           <p className="text-[11px] text-slate-400">
-            MediLink Outpatient Care Navigation · HIPAA/GDPR Architecture Ready
+            MediLink Outpatient Care Navigation
           </p>
         </div>
       </div>

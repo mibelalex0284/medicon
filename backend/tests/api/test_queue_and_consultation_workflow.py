@@ -21,6 +21,7 @@ def test_queue_and_consultation_lifecycle_and_security(
     db_session: Session,
     patient_headers: dict,
     doctor_headers: dict,
+    admin_headers: dict,
 ):
     today = datetime.datetime.now(datetime.timezone.utc).date()
 
@@ -109,6 +110,18 @@ def test_queue_and_consultation_lifecycle_and_security(
         ),
     )
 
+    # 6. Setup Admin Profile (admin-789)
+    profile_service.create_profile(
+        db_session,
+        ProfileCreate(
+            auth_user_id="admin-789",
+            role=UserRole.ADMIN,
+            full_name="Admin Ops",
+            email="admin789@citycentral.org",
+            hospital_id=hosp.id,
+        ),
+    )
+
     # Test Case 3: Patient with no queue entry receives 404 NO_ACTIVE_QUEUE_ENTRY
     res_no_queue = client.get("/api/v1/patients/me/queue", headers=patient_headers)
     assert res_no_queue.status_code == 404
@@ -180,6 +193,11 @@ def test_queue_and_consultation_lifecycle_and_security(
     # Test Case 5c: Doctor CANNOT access patient queue (/api/v1/patients/me/queue)
     res_doc_pat_queue = client.get("/api/v1/patients/me/queue", headers=doctor_headers)
     assert res_doc_pat_queue.status_code == 403
+
+    # Test Case 5d: Administrator calling /api/v1/queues/me/current receives 200 with empty list (no 403)
+    res_admin_doc_queue = client.get("/api/v1/queues/me/current", headers=admin_headers)
+    assert res_admin_doc_queue.status_code == 200
+    assert res_admin_doc_queue.json() == []
 
     # Test Case 6: Unauthorized requests rejected
     res_unauth = client.get(f"/api/v1/queues/{doc1.id}/current")
